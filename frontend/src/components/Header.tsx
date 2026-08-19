@@ -1,12 +1,6 @@
 import { useState } from 'react'
 import { Menu } from 'lucide-react'
-import {
-  Header as SharedHeader,
-  normalizeNotificationOrigin,
-  ThemeToggle,
-  useAvatarUrl,
-  useUnreadNotifications,
-} from '@zudar107/schloss-ui'
+import { Header as SharedHeader, ThemeToggle, useAvatarUrl } from '@zudar107/schloss-ui'
 import { buildSchluesselAccountUrl } from '../lib/authRedirect'
 import { apiClient } from '../lib/api'
 import type { AuthUser } from '../hooks/useAuth'
@@ -25,15 +19,16 @@ interface HeaderProps {
 // Always visible (desktop and mobile) - the sidebar (which carries
 // identity/settings/logout) is hidden below the mobile breakpoint, so
 // this sits alongside its own controls rather than replacing them.
+//
+// Unlike kuvert/tafel/zettel/glocke's own Header, this bootstrap stage
+// does not wire up the shared notification bell yet - Glocke's CORS
+// allowlist doesn't include schrank.localhost until there's a real
+// reason for Schrank's users to see Glocke notifications (nothing here
+// emits or needs to react to any yet). The avatar still works: it's a
+// direct fetch to Schlüssel, which already allows this origin (needed
+// for login itself).
 export function Header({ user, onLogout, onOpenMobileMenu }: HeaderProps) {
   const [loggingOut, setLoggingOut] = useState(false)
-  const glockeUrl = (import.meta.env.VITE_GLOCKE_URL as string | undefined) ?? 'http://localhost:5177'
-  const notificationOrigin = normalizeNotificationOrigin(glockeUrl)
-  const notificationState = useUnreadNotifications({
-    glockeOrigin: notificationOrigin ?? '',
-    userId: loggingOut ? null : user?.id ?? null,
-    apiClient,
-  })
   const avatarUrl = useAvatarUrl({
     schluesselOrigin: SCHLUSSEL_URL,
     userId: loggingOut ? null : user?.id ?? null,
@@ -70,12 +65,6 @@ export function Header({ user, onLogout, onOpenMobileMenu }: HeaderProps) {
       // preferences and stays reachable from the sidebar.
       onSettings={() => { window.location.href = buildSchluesselAccountUrl(window.location.pathname) }}
       onLogout={handleLogout}
-      notifications={!loggingOut && user && notificationOrigin ? {
-        href: `${notificationOrigin}/notifications`,
-        state: notificationState,
-        glockeOrigin: notificationOrigin,
-        apiClient,
-      } : undefined}
       rightSlot={<ThemeToggle />}
       leftSlot={
         <button

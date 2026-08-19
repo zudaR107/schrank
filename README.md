@@ -79,12 +79,12 @@ exposes variables prefixed with `VITE_` to frontend code.
 | `SCHRANK_ALLOWED_ORIGINS` | CORS allowlist passed to the backend by Docker Compose |
 | `SCHLUSSEL_WEB_URL` | Schlüssel browser URL baked into the frontend by Docker Compose |
 | `SCHLOSS_URL` | Schloss home URL baked into the frontend by Docker Compose |
-| `GLOCKE_URL` | Glocke frontend origin baked into the frontend by Docker Compose |
 
 For a direct Vite build, the corresponding build-time variables are
-`VITE_SCHLUSSEL_URL`, `VITE_SCHLOSS_URL`, and `VITE_GLOCKE_URL`; their local
-defaults are `http://localhost:4001`, `http://localhost:3000`, and
-`http://localhost:5177`, respectively.
+`VITE_SCHLUSSEL_URL` and `VITE_SCHLOSS_URL`; their local defaults are
+`http://localhost:4001` and `http://localhost:3000`, respectively. The
+shared notification bell (`VITE_GLOCKE_URL`) isn't wired up yet - see
+"Status" above.
 
 Authenticated `GET /users/me` responses also carry the regional profile
 claims from the verified Schlüssel token: `weekStart` is `monday`, `sunday`,
