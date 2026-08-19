@@ -32,6 +32,10 @@ logic (JWKS verification, CORS, PKCE login redirect, the API client,
 and the resizable sidebar) comes from
 [`schloss-server-kit`](https://github.com/zudaR107/schloss-server-kit) and
 [`schloss-ui`](https://github.com/zudaR107/schloss-ui), not duplicated here.
+Unlike every other app, the shared header notification bell isn't wired
+up: Glocke's own CORS allowlist doesn't include `schrank.localhost` yet,
+since nothing here emits or needs to react to a notification - revisit
+together if that changes.
 
 This repo is a pnpm workspace with two packages:
 
@@ -40,13 +44,15 @@ This repo is a pnpm workspace with two packages:
 
 ## Status
 
-The backend API is complete: real nested folders (create/rename/move/
+v1 is functionally complete: real nested folders (create/rename/move/
 recursive delete, with cycle-detection on move), file upload/download/
-rename/move/delete, a per-file and per-account storage quota, and a
-metadata-only `GET /exports/me` snapshot. The frontend hasn't caught up
-yet - `/files` is still a placeholder page; the file browser UI lands in
-the next stage. Authentication, the shared layout/sidebar, and CI/Docker/
-gateway wiring are in place, reachable at `https://schrank.localhost`.
+rename/move/delete, a per-file and per-account storage quota with a
+usage display in Settings, and a metadata-only `GET /exports/me`
+snapshot - all reachable from the file browser at `/files`. No
+sharing/permissions, no in-app preview (a file is downloaded, not
+previewed inline) - a private, single-owner cabinet, not a
+collaboration tool. The shared notification bell isn't wired up (see
+"How it fits into the platform" below).
 
 ## API
 
