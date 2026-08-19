@@ -1,11 +1,16 @@
 import { Hono } from 'hono'
 import { bodyLimit } from 'hono/body-limit'
 import { usersRouter } from '../../features/users/router.js'
+import { foldersRouter } from '../../features/folders/router.js'
+import { filesRouter } from '../../features/files/router.js'
+import { usageRouter } from '../../features/usage/router.js'
+import { exportsRouter } from '../../features/exports/router.js'
 import { requireAuth, requireAdmin } from '../../middleware/auth.js'
 import { openApiDocument } from '../../openapi.js'
+import { MAX_FILE_BYTES } from '../../lib/quota.js'
 
 /**
- * Build a minimal Hono app wired up with the real users router plus the
+ * Build a minimal Hono app wired up with the real routers plus the
  * inline /health, /ready, and /openapi.json routes that index.ts itself
  * defines. Those are reconstructed here rather than importing index.ts
  * directly, since index.ts eagerly runs drizzle's migrate() against the
@@ -24,7 +29,7 @@ export function createTestApp() {
   app.use(
     '*',
     bodyLimit({
-      maxSize: 1 * 1024 * 1024,
+      maxSize: MAX_FILE_BYTES + 1024 * 1024,
       onError: (c) => c.json({ error: 'Request body too large' }, 413),
     }),
   )
@@ -32,5 +37,9 @@ export function createTestApp() {
   app.get('/ready', (c) => c.json({ status: 'ready', service: 'Schrank' }))
   app.get('/openapi.json', requireAuth, requireAdmin, (c) => c.json(openApiDocument))
   app.route('/users', usersRouter)
+  app.route('/folders', foldersRouter)
+  app.route('/files', filesRouter)
+  app.route('/usage', usageRouter)
+  app.route('/exports', exportsRouter)
   return app
 }
