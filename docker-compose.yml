@@ -18,6 +18,11 @@ services:
     environment:
       PORT: 3005
       DATABASE_PATH: /data/schrank.db
+      # File bytes live under here (files/<ownerUserId>/<fileId>), on the
+      # same volume as the database - one volume to back up, not two.
+      DATA_DIR: /data
+      MAX_FILE_BYTES: ${SCHRANK_MAX_FILE_BYTES:-209715200}
+      MAX_BYTES_PER_USER: ${SCHRANK_MAX_BYTES_PER_USER:-2147483648}
       SCHLUSSEL_JWKS_URL: ${SCHLUSSEL_JWKS_URL:-http://schlussel:4000/.well-known/jwks.json}
       # Must match schlussel's own JWT_ISSUER (hardcoded to "schlussel" in
       # schlussel/docker-compose.yml).

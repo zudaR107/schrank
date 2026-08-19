@@ -7,5 +7,6 @@ export default defineConfig({
     // vitest would otherwise happily discover and run alongside the real
     // src/ tests - harmless in CI (no dist/ there) but confusing locally.
     exclude: ['**/node_modules/**', '**/dist/**'],
+    setupFiles: ['./src/__tests__/helpers/testEnv.ts'],
   },
 })

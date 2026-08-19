@@ -40,10 +40,35 @@ This repo is a pnpm workspace with two packages:
 
 ## Status
 
-Bootstrap only: authentication, the shared layout/sidebar, and CI/Docker/
-gateway wiring are in place, reachable at `https://schrank.localhost`. The
-file storage feature itself (folders, upload, download, preview, quota)
-has not landed yet - the `/files` page is a placeholder until it does.
+The backend API is complete: real nested folders (create/rename/move/
+recursive delete, with cycle-detection on move), file upload/download/
+rename/move/delete, a per-file and per-account storage quota, and a
+metadata-only `GET /exports/me` snapshot. The frontend hasn't caught up
+yet - `/files` is still a placeholder page; the file browser UI lands in
+the next stage. Authentication, the shared layout/sidebar, and CI/Docker/
+gateway wiring are in place, reachable at `https://schrank.localhost`.
+
+## API
+
+Folders and files live in one shared name namespace per directory (a
+folder and a file can't both be named "Photos" in the same place, like a
+real filesystem). Deleting a folder recursively deletes every descendant
+folder/file, including their bytes on disk.
+
+| Method | Path | Purpose |
+|---|---|---|
+| `GET` | `/folders/root` | The caller's top-level folders/files |
+| `GET` | `/folders/:id` | A folder's own record, breadcrumb ancestors, and direct children |
+| `POST` | `/folders` | Create a folder (`{name, parentId}`) |
+| `PATCH` | `/folders/:id` | Rename and/or move a folder |
+| `DELETE` | `/folders/:id` | Recursively delete a folder |
+| `POST` | `/files` | Upload a file (`multipart/form-data`, fields `file` + optional `folderId`) |
+| `GET` | `/files/:id` | File metadata |
+| `GET` | `/files/:id/content` | The raw file bytes |
+| `PATCH` | `/files/:id` | Rename and/or move a file (never touches its bytes) |
+| `DELETE` | `/files/:id` | Delete a file |
+| `GET` | `/usage` | `{usedBytes, limitBytes}` for the caller's account |
+| `GET` | `/exports/me` | Metadata-only JSON snapshot (no file content) |
 
 ## Local development
 
@@ -73,6 +98,9 @@ exposes variables prefixed with `VITE_` to frontend code.
 | Variable | Purpose |
 |---|---|
 | `DATABASE_PATH` | SQLite file path when running the backend directly |
+| `DATA_DIR` | Directory file bytes are stored under (`<DATA_DIR>/files/<ownerUserId>/<fileId>`) |
+| `MAX_FILE_BYTES` | Per-file size cap in bytes (default 200MB) - `SCHRANK_MAX_FILE_BYTES` via Docker Compose |
+| `MAX_BYTES_PER_USER` | Per-account total storage cap in bytes (default 2GB) - `SCHRANK_MAX_BYTES_PER_USER` via Docker Compose |
 | `SCHLUSSEL_JWKS_URL` | Where the backend fetches Schlüssel's public key to verify tokens |
 | `JWT_ISSUER` | Must match Schlüssel's own issuer, or every token gets rejected |
 | `ALLOWED_ORIGINS` | Comma-separated CORS allowlist when running the backend directly |
