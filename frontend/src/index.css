@@ -117,7 +117,7 @@
     100% { transform: scaleY(1); }
   }
   .schrank-door-seam {
-    transform-origin: 50px 24px;
+    transform-origin: 50px 20px;
     animation: door-seam-close 600ms ease-out;
   }
 }
