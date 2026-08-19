@@ -5,7 +5,7 @@ import {
   ChevronRight, Download, File as FileIcon, Folder, FolderInput,
   FolderPlus, Home, Pencil, Trash2, Upload,
 } from 'lucide-react'
-import { Button, Toast } from '@zudar107/schloss-ui'
+import { Button, EmptyState, Toast } from '@zudar107/schloss-ui'
 import { HeroIllustration } from '../../components/HeroIllustration'
 import { useToast } from '../../hooks/useToast'
 import {
@@ -292,18 +292,14 @@ export function FilesPage() {
 
 function EmptyFolderState({ onUpload }: { onUpload: () => void }) {
   return (
-    <div style={{ textAlign: 'center', padding: '4rem 2rem', maxWidth: 440, margin: '0 auto' }}>
-      <HeroIllustration size={100} />
-      <h2 style={{ margin: '1.5rem 0 0.5rem', fontSize: '1.0625rem', fontWeight: 700, color: 'var(--text-primary)' }}>
-        Здесь пока пусто
-      </h2>
-      <p style={{ margin: '0 0 1.25rem', fontSize: '0.875rem', color: 'var(--text-secondary)' }}>
-        Загрузите первый файл или создайте папку.
-      </p>
-      <Button variant="primary" onClick={onUpload}>
-        <Upload size={16} />Загрузить файл
-      </Button>
-    </div>
+    <EmptyState
+      illustration={<HeroIllustration size={100} />}
+      title="Здесь пока пусто"
+      description="Загрузите первый файл или создайте папку."
+      actionLabel="Загрузить файл"
+      actionIcon={<Upload size={16} />}
+      onAction={onUpload}
+    />
   )
 }
 

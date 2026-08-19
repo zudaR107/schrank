@@ -17,25 +17,32 @@ export function HeroIllustration({ size = 32, className }: { size?: number; clas
     >
       {/* Cornice - the darker tone, same "cap over body" trick as the
           castle's darker roof triangles and kuvert's darker flap. */}
-      <rect x="8" y="10" width="84" height="14" rx="3" fill="#78350f" />
+      <rect x="10" y="8" width="80" height="12" rx="3" fill="#78350f" />
 
-      {/* Body (both doors, before the center seam splits them visually) */}
-      <rect x="14" y="24" width="72" height="100" rx="3" fill="#92400e" />
+      {/* Body (both doors) - kept as the dominant fill so the shape
+          reads as solid wood rather than mostly the pale recess below;
+          the two mirror panels are inset well within it on all sides,
+          not stretched edge-to-edge. */}
+      <rect x="16" y="20" width="68" height="106" rx="3" fill="#92400e" />
 
-      {/* Mirror recess, inset into the body - the light recess tone,
-          same trick as the castle's windows. */}
-      <rect x="22" y="34" width="56" height="78" rx="2" fill="#fef3e2" />
+      {/* Mirror recesses, one inset per door - the light recess tone,
+          same trick as the castle's windows. Two separate panels
+          (rather than one recess spanning the full width) so the
+          center seam below reads as a real gap between doors, not a
+          line drawn over a single continuous panel. */}
+      <rect x="23" y="30" width="22" height="52" rx="2" fill="#fef3e2" />
+      <rect x="55" y="30" width="22" height="52" rx="2" fill="#fef3e2" />
 
       {/* Center seam between the two doors - plays a brief "swinging
           shut" settle on mount (see index.css's door-seam-close),
           echoing kuvert's flap-closing flourish with the same
           scaleY-from-the-hinge technique. */}
-      <rect className="schrank-door-seam" x="47" y="24" width="6" height="100" fill="#78350f" />
+      <rect className="schrank-door-seam" x="47" y="20" width="6" height="106" fill="#78350f" />
 
       {/* Signature handle - schloss's own violet, a small cross-service
           wink tying the illustration family together (same color
           kuvert/tafel/zettel use for theirs). */}
-      <circle cx="56" cy="72" r="4" fill="#863bff" />
+      <circle cx="56" cy="73" r="4" fill="#863bff" />
     </svg>
   )
 }
