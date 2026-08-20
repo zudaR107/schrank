@@ -1,5 +1,7 @@
-import { useEffect, useState } from 'react'
-import { Modal } from '@zudar107/schloss-ui'
+import { useEffect, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
+import { X } from 'lucide-react'
+import { Button, Modal } from '@zudar107/schloss-ui'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import rehypeHighlight from 'rehype-highlight'
@@ -42,6 +44,94 @@ export function isPreviewable(file: { name: string; mimeType: string }): boolean
   return previewKind(file) !== null
 }
 
+// A PDF page reads like an actual sheet of paper - showing one at a
+// useful size needs real vertical room, far more than the shared
+// Modal's own maxWidth: 900 / maxHeight: 90vh caps are meant to give
+// (those are deliberately kept well short of the viewport edges, sized
+// for forms and short dialogs - see that component's own doc comment).
+// Rather than stretch a shared, every-service component past what it's
+// designed for, this is a bespoke, Schrank-only dialog that mirrors
+// Modal's own look (backdrop, card, header, Escape-to-close) but is
+// free to fill nearly the whole viewport.
+function PdfPreviewDialog({ file, objectUrl, loading, failed, onClose, onDownload }: {
+  file: FileSummary
+  objectUrl: string | null
+  loading: boolean
+  failed: boolean
+  onClose: () => void
+  onDownload: () => void
+}) {
+  const dialogRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    const previousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null
+    dialogRef.current?.focus()
+    function onKeyDown(event: KeyboardEvent) {
+      if (event.key === 'Escape') onClose()
+    }
+    document.addEventListener('keydown', onKeyDown)
+    return () => {
+      document.removeEventListener('keydown', onKeyDown)
+      previousFocus?.focus()
+    }
+  }, [onClose])
+
+  return createPortal(
+    <div
+      style={{
+        position: 'fixed', inset: 0, zIndex: 100, background: 'rgba(0, 0, 0, 0.4)',
+        display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem',
+      }}
+      onClick={onClose}
+    >
+      <div
+        ref={dialogRef}
+        role="dialog"
+        aria-modal="true"
+        aria-label={file.name}
+        tabIndex={-1}
+        onClick={(event) => event.stopPropagation()}
+        style={{
+          width: 'min(960px, 94vw)', height: '94vh', display: 'flex', flexDirection: 'column',
+          padding: '1.5rem', background: 'var(--bg-elevated)', borderRadius: 'var(--radius-lg)', boxShadow: 'var(--shadow-lg)',
+        }}
+      >
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.75rem', marginBottom: '1.25rem' }}>
+          <h2 style={{ margin: 0, fontSize: '0.875rem', fontWeight: 700, color: 'var(--text-primary)' }}>{file.name}</h2>
+          <button
+            type="button"
+            className="btn-ghost"
+            aria-label="Закрыть"
+            onClick={onClose}
+            style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: 32, height: 32, padding: 0, borderRadius: 8 }}
+          >
+            <X size={18} />
+          </button>
+        </div>
+        <div style={{ flex: 1, minHeight: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          {failed && (
+            <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem' }}>Не удалось загрузить предпросмотр</p>
+          )}
+          {!failed && loading && (
+            <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem' }}>Загрузка…</p>
+          )}
+          {objectUrl && (
+            <iframe
+              src={objectUrl}
+              title={file.name}
+              style={{ width: '100%', height: '100%', border: 'none', borderRadius: 'var(--radius-md)' }}
+            />
+          )}
+        </div>
+        <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '1.5rem' }}>
+          <Button variant="secondary" onClick={onDownload}>Скачать</Button>
+        </div>
+      </div>
+    </div>,
+    document.body,
+  )
+}
+
 export function PreviewModal({ file, onClose, onDownload }: {
   file: FileSummary
   onClose: () => void
@@ -79,6 +169,19 @@ export function PreviewModal({ file, onClose, onDownload }: {
 
   const loading = !failed && objectUrl === null && textContent === null
 
+  if (kind === 'pdf') {
+    return (
+      <PdfPreviewDialog
+        file={file}
+        objectUrl={objectUrl}
+        loading={loading}
+        failed={failed}
+        onClose={onClose}
+        onDownload={onDownload}
+      />
+    )
+  }
+
   return (
     <Modal
       open
@@ -99,22 +202,6 @@ export function PreviewModal({ file, onClose, onDownload }: {
             src={objectUrl}
             alt={file.name}
             style={{ maxWidth: '100%', maxHeight: '70vh', borderRadius: 'var(--radius-md)' }}
-          />
-        )}
-        {objectUrl && kind === 'pdf' && (
-          <iframe
-            src={objectUrl}
-            title={file.name}
-            // A fixed height (unlike the image/text/markdown previews
-            // below, which cap themselves with maxHeight and scroll
-            // internally) - an iframe collapses to a tiny intrinsic
-            // height without one. 70vh alone doesn't account for the
-            // Modal's own header/footer/padding on top of it, which on
-            // shorter viewports pushes the dialog's total content past
-            // its own maxHeight: 90vh and forces the *Modal* itself
-            // (not the PDF) to grow a thin outer scrollbar. min() keeps
-            // this within budget regardless of viewport height.
-            style={{ width: '100%', height: 'min(70vh, calc(90vh - 200px))', border: 'none', borderRadius: 'var(--radius-md)' }}
           />
         )}
         {textContent !== null && kind === 'markdown' && (
