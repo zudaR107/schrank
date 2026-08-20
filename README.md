@@ -32,10 +32,11 @@ logic (JWKS verification, CORS, PKCE login redirect, the API client,
 and the resizable sidebar) comes from
 [`schloss-server-kit`](https://github.com/zudaR107/schloss-server-kit) and
 [`schloss-ui`](https://github.com/zudaR107/schloss-ui), not duplicated here.
-Unlike every other app, the shared header notification bell isn't wired
-up: Glocke's own CORS allowlist doesn't include `schrank.localhost` yet,
-since nothing here emits or needs to react to a notification - revisit
-together if that changes.
+The shared header notification bell is wired up like every other app's,
+even though Schrank itself never emits a Glocke event of its own - it
+only needs to *show* notifications from other services (Kuvert, Tafel,
+...), so a user can see and jump to one no matter which app they're
+currently in.
 
 This repo is a pnpm workspace with two packages:
 

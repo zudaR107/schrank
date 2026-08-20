@@ -1,14 +1,21 @@
 import { useState } from 'react'
 import { Menu } from 'lucide-react'
-import { Header as SharedHeader, ThemeToggle, useAvatarUrl } from '@zudar107/schloss-ui'
+import {
+  Header as SharedHeader,
+  normalizeNotificationOrigin,
+  ThemeToggle,
+  useAvatarUrl,
+  useUnreadNotifications,
+} from '@zudar107/schloss-ui'
 import { buildSchluesselAccountUrl } from '../lib/authRedirect'
 import { apiClient } from '../lib/api'
 import type { AuthUser } from '../hooks/useAuth'
 
 // Where "На главную" links back to (schloss) - separate from
 // VITE_SCHLUSSEL_URL, which points the other way (to the login page).
-const SCHLOSS_URL: string = (import.meta.env.VITE_SCHLOSS_URL as string | undefined) ?? 'http://localhost:3000'
-const SCHLUSSEL_URL: string = (import.meta.env.VITE_SCHLUSSEL_URL as string | undefined) ?? 'http://localhost:4001'
+const DEFAULT_SCHLOSS_URL = 'http://localhost:3000'
+const DEFAULT_GLOCKE_URL = 'http://localhost:5177'
+const DEFAULT_SCHLUSSEL_URL = 'http://localhost:4001'
 
 interface HeaderProps {
   user: AuthUser | null
@@ -20,17 +27,23 @@ interface HeaderProps {
 // identity/settings/logout) is hidden below the mobile breakpoint, so
 // this sits alongside its own controls rather than replacing them.
 //
-// Unlike kuvert/tafel/zettel/glocke's own Header, this bootstrap stage
-// does not wire up the shared notification bell yet - Glocke's CORS
-// allowlist doesn't include schrank.localhost until there's a real
-// reason for Schrank's users to see Glocke notifications (nothing here
-// emits or needs to react to any yet). The avatar still works: it's a
-// direct fetch to Schlüssel, which already allows this origin (needed
-// for login itself).
+// The notification bell is wired up like every other app's, even though
+// Schrank itself never emits a Glocke event - a user should be able to
+// see and jump to a notification from Kuvert/Tafel/Zettel/etc. no matter
+// which app they're currently in, not only from the one that raised it.
 export function Header({ user, onLogout, onOpenMobileMenu }: HeaderProps) {
   const [loggingOut, setLoggingOut] = useState(false)
+  const schlossUrl = (import.meta.env.VITE_SCHLOSS_URL as string | undefined) ?? DEFAULT_SCHLOSS_URL
+  const glockeUrl = (import.meta.env.VITE_GLOCKE_URL as string | undefined) ?? DEFAULT_GLOCKE_URL
+  const schluesselUrl = (import.meta.env.VITE_SCHLUSSEL_URL as string | undefined) ?? DEFAULT_SCHLUSSEL_URL
+  const notificationOrigin = normalizeNotificationOrigin(glockeUrl)
+  const notificationState = useUnreadNotifications({
+    glockeOrigin: glockeUrl,
+    userId: loggingOut ? null : user?.id ?? null,
+    apiClient,
+  })
   const avatarUrl = useAvatarUrl({
-    schluesselOrigin: SCHLUSSEL_URL,
+    schluesselOrigin: schluesselUrl,
     userId: loggingOut ? null : user?.id ?? null,
     apiClient,
   })
@@ -56,7 +69,7 @@ export function Header({ user, onLogout, onOpenMobileMenu }: HeaderProps) {
           <path d="M7 11V7a5 5 0 0 1 10 0v4" />
         </svg>
       }
-      homeHref={SCHLOSS_URL}
+      homeHref={schlossUrl}
       homeTitle="На главную"
       user={user ? { ...user, avatarUrl } : null}
       // The header's gear icon opens the platform-wide account settings
@@ -65,6 +78,9 @@ export function Header({ user, onLogout, onOpenMobileMenu }: HeaderProps) {
       // preferences and stays reachable from the sidebar.
       onSettings={() => { window.location.href = buildSchluesselAccountUrl(window.location.pathname) }}
       onLogout={handleLogout}
+      notifications={user && !loggingOut && notificationOrigin
+        ? { href: `${notificationOrigin}/notifications`, state: notificationState, glockeOrigin: notificationOrigin, apiClient }
+        : undefined}
       rightSlot={<ThemeToggle />}
       leftSlot={
         <button
