@@ -6,6 +6,8 @@ import {
   FolderPlus, Home, Pencil, Trash2, Upload,
 } from 'lucide-react'
 import { Button, downloadBlob, EmptyState, Toast } from '@zudar107/schloss-ui'
+import ReactMarkdown from 'react-markdown'
+import remarkGfm from 'remark-gfm'
 import { HeroIllustration } from '../../components/HeroIllustration'
 import { useToast } from '../../hooks/useToast'
 import {
@@ -437,19 +439,31 @@ function FolderTile({ folder, onOpen, onRename, onMove, onDelete }: {
   )
 }
 
+// How much of a text/markdown file's content actually gets rendered into
+// the tiny, permanently-clipped grid thumbnail - a peek/texture, not a
+// real read, so there's no point fetching-then-rendering (and, for
+// markdown, re-parsing) an entire large file just for a few visible
+// pixels of it.
+const THUMBNAIL_TEXT_PREVIEW_CHARS = 2000
+
 function FileThumbnail({ file }: { file: FileSummary }) {
   const kind = previewKind(file)
-  const [imageUrl, setImageUrl] = useState<string | null>(null)
+  const [objectUrl, setObjectUrl] = useState<string | null>(null)
+  const [textContent, setTextContent] = useState<string | null>(null)
 
   useEffect(() => {
-    if (kind !== 'image') return
+    if (kind !== 'image' && kind !== 'pdf' && kind !== 'markdown' && kind !== 'text') return
     let cancelled = false
     let url: string | null = null
     fetchFileBlob(file.id)
-      .then((blob) => {
+      .then(async (blob) => {
         if (cancelled) return
-        url = URL.createObjectURL(blob)
-        setImageUrl(url)
+        if (kind === 'markdown' || kind === 'text') {
+          setTextContent((await blob.text()).slice(0, THUMBNAIL_TEXT_PREVIEW_CHARS))
+        } else {
+          url = URL.createObjectURL(blob)
+          setObjectUrl(url)
+        }
       })
       .catch(() => { /* falls back to the generic file icon below */ })
     return () => {
@@ -458,10 +472,46 @@ function FileThumbnail({ file }: { file: FileSummary }) {
     }
   }, [file.id, kind])
 
-  if (kind === 'image' && imageUrl) {
-    return <img src={imageUrl} alt={file.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+  if (kind === 'image' && objectUrl) {
+    return <img src={objectUrl} alt={file.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
   }
-  if (kind === 'text') return <FileText size={40} color="var(--accent)" strokeWidth={1.5} />
+  if (kind === 'pdf' && objectUrl) {
+    // pointerEvents: none - the tile's own onClick (open the full
+    // preview) must fire no matter where on the thumbnail the user
+    // clicks, not get captured by the embedded PDF viewer underneath.
+    return (
+      <iframe
+        src={objectUrl}
+        title={file.name}
+        tabIndex={-1}
+        style={{ width: '100%', height: '100%', border: 'none', pointerEvents: 'none' }}
+      />
+    )
+  }
+  if (kind === 'markdown' && textContent !== null) {
+    return (
+      <div
+        className="markdown-preview"
+        style={{
+          width: '100%', height: '100%', padding: '0.5rem', fontSize: '0.5rem', lineHeight: 1.35,
+          textAlign: 'left', pointerEvents: 'none',
+        }}
+      >
+        <ReactMarkdown remarkPlugins={[remarkGfm]}>{textContent}</ReactMarkdown>
+      </div>
+    )
+  }
+  if (kind === 'text' && textContent !== null) {
+    return (
+      <pre style={{
+        width: '100%', height: '100%', margin: 0, padding: '0.5rem', textAlign: 'left', pointerEvents: 'none',
+        fontSize: '0.5rem', lineHeight: 1.35, color: 'var(--text-primary)', whiteSpace: 'pre-wrap', wordBreak: 'break-word',
+      }}>
+        {textContent}
+      </pre>
+    )
+  }
+  if (kind === 'markdown' || kind === 'text') return <FileText size={40} color="var(--accent)" strokeWidth={1.5} />
   return <FileIcon size={40} color="var(--accent)" strokeWidth={1.5} />
 }
 
