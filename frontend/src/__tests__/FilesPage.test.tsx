@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { render, screen, waitFor } from '@testing-library/react'
+import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { FilesPage } from '../features/files/FilesPage'
@@ -59,7 +59,12 @@ beforeEach(() => {
   vi.mocked(updateFile).mockReset()
   vi.mocked(deleteFile).mockReset()
   vi.mocked(uploadFile).mockReset()
-  vi.mocked(fetchFileBlob).mockReset()
+  // Previewable files (now including .pdf/.md/text) eagerly fetch their
+  // thumbnail as soon as their tile mounts - most tests below render a
+  // folder containing one without caring about its content, so this
+  // needs a safe default rather than resolving to undefined; tests that
+  // do care override it with their own mockResolvedValue afterward.
+  vi.mocked(fetchFileBlob).mockReset().mockResolvedValue(new Blob())
   mockNavigate.mockReset()
   mockUseSearch.mockReturnValue({})
   vi.stubGlobal('URL', { ...URL, createObjectURL: vi.fn(() => 'blob:mock'), revokeObjectURL: vi.fn() })
@@ -229,18 +234,81 @@ describe('FilesPage — image thumbnails', () => {
     expect(await screen.findByRole('img', { name: 'photo.webp' })).toHaveAttribute('src', 'blob:mock')
   })
 
-  it('does not eagerly fetch a thumbnail for a non-image file', async () => {
-    vi.mocked(getFolderContents).mockResolvedValue(rootContents)
+  it('does not eagerly fetch a thumbnail for a non-previewable file', async () => {
+    vi.mocked(getFolderContents).mockResolvedValue({
+      ...emptyRoot,
+      files: [{
+        id: 'file-6', name: 'archive.zip', folderId: null, mimeType: 'application/zip',
+        sizeBytes: 4096, createdAt: '2026-08-19T10:00:00.000Z', updatedAt: '2026-08-19T10:00:00.000Z',
+      }],
+    })
     render(<FilesPage />, { wrapper: createWrapper() })
 
-    await screen.findByText('report.pdf')
+    await screen.findByText('archive.zip')
 
     expect(fetchFileBlob).not.toHaveBeenCalled()
   })
 })
 
+describe('FilesPage — PDF and text thumbnails', () => {
+  it('eagerly fetches and shows an inline embedded thumbnail for a PDF file, without a click', async () => {
+    vi.mocked(getFolderContents).mockResolvedValue({
+      ...emptyRoot,
+      files: [{
+        id: 'file-7', name: 'report.pdf', folderId: null, mimeType: 'application/pdf',
+        sizeBytes: 2048, createdAt: '2026-08-19T10:00:00.000Z', updatedAt: '2026-08-19T10:00:00.000Z',
+      }],
+    })
+    const blob = new Blob(['%PDF'], { type: 'application/pdf' })
+    vi.mocked(fetchFileBlob).mockResolvedValue(blob)
+    const { container } = render(<FilesPage />, { wrapper: createWrapper() })
+
+    await waitFor(() => expect(fetchFileBlob).toHaveBeenCalledWith('file-7'))
+    // Queried directly rather than via a testing-library role/title
+    // helper - jsdom doesn't implement iframe navigation, and querying
+    // an <iframe> through those helpers touches internals that trip
+    // over that limitation.
+    await waitFor(() => expect(container.querySelector('iframe')).not.toBeNull())
+    const iframe = container.querySelector('iframe')!
+    expect(iframe).toHaveAttribute('src', 'blob:mock')
+    expect(iframe).toHaveAttribute('title', 'report.pdf')
+  })
+
+  it('eagerly renders a formatted markdown preview for a .md file, not raw source text', async () => {
+    vi.mocked(getFolderContents).mockResolvedValue({
+      ...emptyRoot,
+      files: [{
+        id: 'file-8', name: 'README.md', folderId: null, mimeType: 'text/markdown',
+        sizeBytes: 40, createdAt: '2026-08-19T10:00:00.000Z', updatedAt: '2026-08-19T10:00:00.000Z',
+      }],
+    })
+    const blob = new Blob(['# Hello'], { type: 'text/markdown' })
+    vi.mocked(fetchFileBlob).mockResolvedValue(blob)
+    render(<FilesPage />, { wrapper: createWrapper() })
+
+    await waitFor(() => expect(fetchFileBlob).toHaveBeenCalledWith('file-8'))
+    expect(await screen.findByRole('heading', { name: 'Hello', level: 1 })).toBeInTheDocument()
+  })
+
+  it('eagerly fetches and shows a plain-text thumbnail for a dotfile with no extension', async () => {
+    vi.mocked(getFolderContents).mockResolvedValue({
+      ...emptyRoot,
+      files: [{
+        id: 'file-9', name: '.bashrc', folderId: null, mimeType: '',
+        sizeBytes: 259, createdAt: '2026-08-19T10:00:00.000Z', updatedAt: '2026-08-19T10:00:00.000Z',
+      }],
+    })
+    const blob = new Blob(['export PATH=$PATH:/usr/local/bin'], { type: '' })
+    vi.mocked(fetchFileBlob).mockResolvedValue(blob)
+    render(<FilesPage />, { wrapper: createWrapper() })
+
+    await waitFor(() => expect(fetchFileBlob).toHaveBeenCalledWith('file-9'))
+    expect(await screen.findByText(/export PATH/)).toBeInTheDocument()
+  })
+})
+
 describe('FilesPage — text preview', () => {
-  it('opens a text preview for a markdown file with no browser-reported MIME type', async () => {
+  it('opens a rendered markdown preview for a .md file with no browser-reported MIME type', async () => {
     const user = userEvent.setup()
     vi.mocked(getFolderContents).mockResolvedValue({
       ...emptyRoot,
@@ -255,8 +323,11 @@ describe('FilesPage — text preview', () => {
 
     await user.click(await screen.findByText('README.md'))
 
-    expect(await screen.findByRole('dialog', { name: 'README.md' })).toBeInTheDocument()
-    expect(await screen.findByText('# Hello')).toBeInTheDocument()
+    const dialog = await screen.findByRole('dialog', { name: 'README.md' })
+    // Rendered as markdown (a real <h1>), not the literal source text -
+    // scoped to the dialog since the grid tile's own thumbnail also
+    // renders the same "# Hello" as a heading in the background.
+    expect(within(dialog).getByRole('heading', { name: 'Hello', level: 1 })).toBeInTheDocument()
   })
 })
 
