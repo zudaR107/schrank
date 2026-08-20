@@ -18,6 +18,10 @@ registry.registerComponent('securitySchemes', 'exportDelegationAuth', {
   type: 'http', scheme: 'bearer', bearerFormat: 'JWT',
   description: 'Schlüssel export delegation scoped to audience hof-service:schrank and data:export.',
 })
+registry.registerComponent('securitySchemes', 'hofHmac', {
+  type: 'apiKey', in: 'header', name: 'X-Hof-Signature',
+  description: '64-character hexadecimal HMAC-SHA-256 over timestamp, uppercase method, path with query, SHA-256 of the exact body bytes, key id, and source (newline-delimited). Also requires X-Hof-Service, X-Hof-Key-Id, and X-Hof-Timestamp.',
+})
 
 const BEARER = [{ bearerAuth: [] }]
 
@@ -169,6 +173,27 @@ registry.registerPath({
       },
     },
     401: { description: 'Missing, invalid, expired, or incorrectly scoped token', content: { 'application/json': { schema: errorResponseSchema } } },
+  },
+})
+
+const zettelSyncEventSchema = z.object({
+  version: z.literal('1'), id: z.uuid(), type: z.enum(['zettel.note.mirrored.v1', 'zettel.note.unmirrored.v1']),
+  source: z.literal('zettel'), occurredAt: z.iso.datetime(), correlationId: z.uuid(), payload: z.unknown(),
+})
+
+registry.registerPath({
+  method: 'post', path: '/internal/v1/events', tags: ['internal'], summary: 'Accept a signed note-sync event from Zettel',
+  description: 'Authenticates the exact request body bytes and the configured Zettel producer identity before mirroring or removing the corresponding .md file in the well-known "zettel" folder. A new event returns 202, an exact byte-for-byte replay of the same event id returns 200, and identity reuse with different bytes returns 409.',
+  security: [{ hofHmac: [] }],
+  request: { body: { content: { 'application/json': { schema: zettelSyncEventSchema } } } },
+  responses: {
+    202: { description: 'Durably applied as a new inbox event' },
+    200: { description: 'Exact duplicate; no second mutation was applied' },
+    400: { description: 'Invalid JSON, envelope, or payload' },
+    401: { description: 'Missing, malformed, stale, or invalid signature' },
+    403: { description: 'Source producer is not configured' },
+    409: { description: 'The event id already exists with different exact body bytes' },
+    413: { description: 'Request body exceeds the configured event limit' },
   },
 })
 

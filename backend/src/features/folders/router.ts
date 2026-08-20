@@ -1,14 +1,15 @@
 import { Hono } from 'hono'
 import { zValidator } from '@hono/zod-validator'
 import { z } from 'zod'
-import { eq, and, isNull } from 'drizzle-orm'
+import { eq, and, isNull, inArray } from 'drizzle-orm'
 import { createId } from '@paralleldrive/cuid2'
 import { db } from '../../db/index.js'
-import { folders, files } from '../../db/schema.js'
+import { folders, files, zettelMirrors } from '../../db/schema.js'
 import { requireAuth } from '../../middleware/auth.js'
 import { getOwnedFolder, ancestorsOf, isSelfOrAncestor, itemCountOf, nameTaken } from '../../lib/folders.js'
 import { folderJson, fileJson } from '../../lib/serialize.js'
 import { deleteFileBytes } from '../../lib/storage.js'
+import { enqueueZettelSyncEvent } from '../../sync/enqueue.js'
 
 const router = new Hono()
 router.use('*', requireAuth)
@@ -130,10 +131,24 @@ router.delete('/:id', (c) => {
     }
 
     const affectedFiles = descendantIds.flatMap((folderId) =>
-      tx.select({ storagePath: files.storagePath }).from(files)
+      tx.select({ id: files.id, storagePath: files.storagePath }).from(files)
         .where(and(eq(files.ownerUserId, user.id), eq(files.folderId, folderId)))
         .all(),
     )
+
+    // Every mirrored note among the descendant files - a recursive
+    // delete bypasses files/router.ts's own DELETE /:id, so this is the
+    // only place that can catch "the zettel folder (or an ancestor of
+    // it) just got deleted" and un-mirror the notes it contained.
+    if (affectedFiles.length > 0) {
+      const mirrors = tx.select().from(zettelMirrors)
+        .where(inArray(zettelMirrors.fileId, affectedFiles.map((f) => f.id))).all()
+      for (const mirror of mirrors) {
+        enqueueZettelSyncEvent(tx, 'schrank.file.zettel_deleted.v1', user.id, {
+          noteId: mirror.noteId, ownerUserId: user.id,
+        })
+      }
+    }
 
     tx.delete(folders).where(eq(folders.id, id)).run()
     return affectedFiles.map((f) => f.storagePath)

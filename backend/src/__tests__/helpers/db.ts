@@ -36,4 +36,6 @@ export const db = drizzle(sqlite, { schema })
  */
 export function cleanDb() {
   sqlite.exec('DELETE FROM users')
+  sqlite.exec('DELETE FROM zettel_sync_outbox')
+  sqlite.exec('DELETE FROM inbox_events')
 }
