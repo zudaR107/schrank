@@ -270,7 +270,10 @@ describe('FilesPage — PDF and text thumbnails', () => {
     // over that limitation.
     await waitFor(() => expect(container.querySelector('iframe')).not.toBeNull())
     const iframe = container.querySelector('iframe')!
-    expect(iframe).toHaveAttribute('src', 'blob:mock')
+    // The #toolbar=0&navpanes=0&scrollbar=0 fragment hides the browser's
+    // own PDF viewer chrome, which otherwise dominates a thumbnail this
+    // small - see the component's own comment.
+    expect(iframe).toHaveAttribute('src', 'blob:mock#toolbar=0&navpanes=0&scrollbar=0')
     expect(iframe).toHaveAttribute('title', 'report.pdf')
   })
 
@@ -287,7 +290,15 @@ describe('FilesPage — PDF and text thumbnails', () => {
     render(<FilesPage />, { wrapper: createWrapper() })
 
     await waitFor(() => expect(fetchFileBlob).toHaveBeenCalledWith('file-8'))
-    expect(await screen.findByRole('heading', { name: 'Hello', level: 1 })).toBeInTheDocument()
+    const heading = await screen.findByRole('heading', { name: 'Hello', level: 1 })
+    expect(heading).toBeInTheDocument()
+    // Rendered at real proportions and shrunk as a whole block via
+    // transform, not just given a tiny font-size - otherwise a
+    // top-level heading (naturally the biggest element on the page)
+    // ends up dominating the entire thumbnail on its own, showing no
+    // body text at all.
+    const scaledBlock = heading.closest('.markdown-preview') as HTMLElement
+    expect(scaledBlock.style.transform).toBe('scale(0.25)')
   })
 
   it('eagerly fetches and shows a plain-text thumbnail for a dotfile with no extension', async () => {

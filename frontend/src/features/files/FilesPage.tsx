@@ -476,12 +476,17 @@ function FileThumbnail({ file }: { file: FileSummary }) {
     return <img src={objectUrl} alt={file.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
   }
   if (kind === 'pdf' && objectUrl) {
-    // pointerEvents: none - the tile's own onClick (open the full
-    // preview) must fire no matter where on the thumbnail the user
-    // clicks, not get captured by the embedded PDF viewer underneath.
+    // #toolbar=0&navpanes=0&scrollbar=0 - recognized by both Chrome's and
+    // Firefox's built-in (PDF.js-based) viewers to hide their own chrome
+    // (the toolbar, its search box, and the document-outline side panel)
+    // - without it, that chrome is what actually fills a thumbnail this
+    // small, not the document itself. pointerEvents: none - the tile's
+    // own onClick (open the full preview) must fire no matter where on
+    // the thumbnail the user clicks, not get captured by the embedded
+    // viewer underneath.
     return (
       <iframe
-        src={objectUrl}
+        src={`${objectUrl}#toolbar=0&navpanes=0&scrollbar=0`}
         title={file.name}
         tabIndex={-1}
         style={{ width: '100%', height: '100%', border: 'none', pointerEvents: 'none' }}
@@ -490,14 +495,22 @@ function FileThumbnail({ file }: { file: FileSummary }) {
   }
   if (kind === 'markdown' && textContent !== null) {
     return (
-      <div
-        className="markdown-preview"
-        style={{
-          width: '100%', height: '100%', padding: '0.5rem', fontSize: '0.5rem', lineHeight: 1.35,
-          textAlign: 'left', pointerEvents: 'none',
-        }}
-      >
-        <ReactMarkdown remarkPlugins={[remarkGfm]}>{textContent}</ReactMarkdown>
+      <div style={{ width: '100%', height: '100%', overflow: 'hidden', pointerEvents: 'none' }}>
+        {/* A genuine miniature, not just small text: rendered at its
+         * real proportions (so a top-level heading is still only
+         * modestly bigger than body text, the way it reads in the
+         * actual file) inside a box 4x the thumbnail's own width, then
+         * shrunk 4x via transform - percentages, so this stays correct
+         * regardless of how wide the grid actually makes this tile.
+         * Shrinking the whole block instead of just setting a tiny
+         * font-size is what makes many lines of body text visible
+         * instead of one oversized heading swallowing the frame. */}
+        <div
+          className="markdown-preview"
+          style={{ width: '400%', transform: 'scale(0.25)', transformOrigin: 'top left', padding: '0.75rem', textAlign: 'left' }}
+        >
+          <ReactMarkdown remarkPlugins={[remarkGfm]}>{textContent}</ReactMarkdown>
+        </div>
       </div>
     )
   }
