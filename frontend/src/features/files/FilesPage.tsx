@@ -18,7 +18,7 @@ import {
 import { NameModal } from './NameModal'
 import { FolderPickerModal } from './FolderPickerModal'
 import { isPreviewable, previewKind, PreviewModal } from './PreviewModal'
-import { PdfThumbnail } from './PdfThumbnail'
+import { loadPdfjs, PdfThumbnail } from './PdfThumbnail'
 
 type RenameTarget = { kind: 'folder' | 'file'; id: string; name: string }
 type MoveTarget = { kind: 'folder' | 'file'; id: string; currentParentId: string | null }
@@ -70,6 +70,17 @@ export function FilesPage() {
   const queryClient = useQueryClient()
   const toast = useToast()
   const fileInputRef = useRef<HTMLInputElement>(null)
+
+  // Kicked off the moment this page mounts, in parallel with the folder
+  // listing itself fetching - not gated on this folder actually turning
+  // out to contain a PDF, since waiting to find out would forfeit the
+  // very overlap this is trying to buy: pdf.js only needs fetching once
+  // per session (see PdfThumbnail's own module-level cache), so paying
+  // that cost early, once, is worth it in a file-storage app where PDFs
+  // are a routine file type - by the time a folder with one actually
+  // renders, its thumbnail is often ready to render immediately instead
+  // of visibly waiting on the library to arrive.
+  useEffect(() => { void loadPdfjs() }, [])
 
   const [createFolderOpen, setCreateFolderOpen] = useState(false)
   const [createFolderKey, setCreateFolderKey] = useState(0)
@@ -489,7 +500,13 @@ function FileThumbnail({ file }: { file: FileSummary }) {
   }
   if (kind === 'markdown' && textContent !== null) {
     return (
-      <div style={{ width: '100%', height: '100%', overflow: 'hidden', pointerEvents: 'none', userSelect: 'none' }}>
+      <div
+        className="thumbnail-preview-text"
+        style={{
+          width: '100%', height: '100%', overflow: 'hidden', pointerEvents: 'none',
+          userSelect: 'none', WebkitUserSelect: 'none',
+        }}
+      >
         {/* A genuine miniature, not just small text: rendered at its
          * real proportions (so a top-level heading is still only
          * modestly bigger than body text, the way it reads in the
@@ -510,9 +527,9 @@ function FileThumbnail({ file }: { file: FileSummary }) {
   }
   if (kind === 'text' && textContent !== null) {
     return (
-      <pre style={{
+      <pre className="thumbnail-preview-text" style={{
         width: '100%', height: '100%', margin: 0, padding: '0.5rem', textAlign: 'left',
-        pointerEvents: 'none', userSelect: 'none',
+        pointerEvents: 'none', userSelect: 'none', WebkitUserSelect: 'none',
         fontSize: '0.5rem', lineHeight: 1.35, color: 'var(--text-primary)', whiteSpace: 'pre-wrap', wordBreak: 'break-word',
       }}>
         {textContent}

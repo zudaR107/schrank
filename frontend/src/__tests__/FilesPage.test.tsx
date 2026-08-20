@@ -268,6 +268,19 @@ describe('FilesPage — image thumbnails', () => {
 })
 
 describe('FilesPage — PDF and text thumbnails', () => {
+  it('prefetches pdf.js as soon as the page mounts, even for a folder with no PDF in it', async () => {
+    vi.mocked(getFolderContents).mockResolvedValue(emptyRoot)
+    render(<FilesPage />, { wrapper: createWrapper() })
+    await screen.findByText('Здесь пока пусто')
+
+    // Only loadPdfjs() (triggered here purely because the page mounted,
+    // regardless of this specific folder's contents) ever sets this -
+    // an indirect but real signal that the prefetch actually ran, not
+    // just that the module would resolve if asked.
+    const { GlobalWorkerOptions } = await import('pdfjs-dist')
+    await waitFor(() => expect(GlobalWorkerOptions.workerSrc).toBe('mock-worker-url'))
+  })
+
   it('eagerly renders an actual page-content thumbnail (a <canvas>, not an embedded viewer) for a PDF file, without a click', async () => {
     vi.mocked(getFolderContents).mockResolvedValue({
       ...emptyRoot,

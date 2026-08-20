@@ -139,6 +139,17 @@
   .markdown-preview th { background: var(--bg-surface); font-weight: 600; }
   .markdown-preview hr { border: none; border-top: 1px solid var(--border); margin: 1.25rem 0; }
   .markdown-preview img { max-width: 100%; border-radius: var(--radius-sm); }
+
+  /* Belt-and-suspenders alongside these elements' own user-select: none
+   * (FilesPage.tsx) - browsers don't consistently honor user-select:
+   * none for a "select all" that originates outside the element and
+   * extends across it, so a selection can still visually land here.
+   * A soft, translucent wash instead of the app's normal solid
+   * ::selection (white-on-accent) - at the ~4px-tall scaled-down text
+   * these grid-tile previews render at, a solid highlight reads as an
+   * opaque smudge rather than legible inverted text, so this keeps the
+   * text itself visible through the tint instead of replacing it. */
+  .thumbnail-preview-text ::selection { background: rgba(146, 64, 14, 0.25); color: inherit; }
 }
 
 /* HeroIllustration's center door seam plays a brief "swinging shut"
