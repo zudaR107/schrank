@@ -26,6 +26,23 @@ vi.mock('../lib/api', () => ({
   fetchFileBlob: vi.fn(),
 }))
 
+// PdfThumbnail dynamically imports the real pdf.js - real PDF parsing
+// needs actual valid PDF bytes, and real rendering needs a genuine
+// Canvas 2D context that jsdom doesn't provide. Mocked here so its
+// tests exercise this component's own control flow, not pdf.js itself.
+vi.mock('pdfjs-dist', () => ({
+  getDocument: vi.fn(() => ({
+    promise: Promise.resolve({
+      getPage: vi.fn(() => Promise.resolve({
+        getViewport: vi.fn(({ scale = 1 }: { scale?: number }) => ({ width: 300 * scale, height: 400 * scale })),
+        render: vi.fn(() => ({ promise: Promise.resolve(), cancel: vi.fn() })),
+      })),
+    }),
+  })),
+  GlobalWorkerOptions: {},
+}))
+vi.mock('pdfjs-dist/build/pdf.worker.min.mjs?url', () => ({ default: 'mock-worker-url' }))
+
 import {
   createFolder, deleteFile, deleteFolder, fetchFileBlob, getFolderContents, updateFile, updateFolder, uploadFile,
 } from '../lib/api'
@@ -251,7 +268,7 @@ describe('FilesPage — image thumbnails', () => {
 })
 
 describe('FilesPage — PDF and text thumbnails', () => {
-  it('eagerly fetches and shows an inline embedded thumbnail for a PDF file, without a click', async () => {
+  it('eagerly renders an actual page-content thumbnail (a <canvas>, not an embedded viewer) for a PDF file, without a click', async () => {
     vi.mocked(getFolderContents).mockResolvedValue({
       ...emptyRoot,
       files: [{
@@ -263,18 +280,15 @@ describe('FilesPage — PDF and text thumbnails', () => {
     vi.mocked(fetchFileBlob).mockResolvedValue(blob)
     const { container } = render(<FilesPage />, { wrapper: createWrapper() })
 
+    // Confirms it's rendered via pdf.js (a real thumbnail of the page
+    // content), not an <iframe>/<embed> pointed at the file - neither
+    // of those can be made to hide the browser's own PDF viewer chrome
+    // (toolbar, search box, outline panel), which is what dominates a
+    // thumbnail this small if used instead.
     await waitFor(() => expect(fetchFileBlob).toHaveBeenCalledWith('file-7'))
-    // Queried directly rather than via a testing-library role/title
-    // helper - jsdom doesn't implement iframe navigation, and querying
-    // an <iframe> through those helpers touches internals that trip
-    // over that limitation.
-    await waitFor(() => expect(container.querySelector('iframe')).not.toBeNull())
-    const iframe = container.querySelector('iframe')!
-    // The #toolbar=0&navpanes=0&scrollbar=0 fragment hides the browser's
-    // own PDF viewer chrome, which otherwise dominates a thumbnail this
-    // small - see the component's own comment.
-    expect(iframe).toHaveAttribute('src', 'blob:mock#toolbar=0&navpanes=0&scrollbar=0')
-    expect(iframe).toHaveAttribute('title', 'report.pdf')
+    await waitFor(() => expect(container.querySelector('canvas')).not.toBeNull())
+    expect(container.querySelector('iframe')).toBeNull()
+    expect(container.querySelector('embed')).toBeNull()
   })
 
   it('eagerly renders a formatted markdown preview for a .md file, not raw source text', async () => {
