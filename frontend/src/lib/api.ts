@@ -35,6 +35,11 @@ export interface FolderSummary {
   name: string
   parentId: string | null
   createdAt: string
+  // Only present on entries in FolderContents.folders (direct children of
+  // the listed folder) - the current folder itself and breadcrumb
+  // ancestors don't carry it, since nothing renders a count badge for
+  // those.
+  itemCount?: number
 }
 
 export interface FileSummary {

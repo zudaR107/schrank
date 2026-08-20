@@ -26,10 +26,14 @@ interface FolderDTO {
   createdAt: string
 }
 
+interface FolderListEntry extends FolderDTO {
+  itemCount: number
+}
+
 interface FolderView {
   folder: FolderDTO | null
   ancestors: FolderDTO[]
-  folders: FolderDTO[]
+  folders: FolderListEntry[]
   files: unknown[]
 }
 
@@ -156,6 +160,141 @@ describe('GET /folders/:id', () => {
     const mine = await createFolder('Mine', null, H1)
     const res = await get(`/folders/${mine.id}`, H2)
     expect(res.status).toBe(404)
+  })
+})
+
+describe('folders[].itemCount', () => {
+  function findEntry(body: FolderView, id: string): FolderListEntry {
+    const entry = body.folders.find((f) => f.id === id)
+    if (!entry) throw new Error(`folder ${id} not found in folders[]`)
+    return entry
+  }
+
+  it('a freshly created empty folder has itemCount 0 when listed as a child', async () => {
+    const parent = await createFolder('Parent', null, H1)
+    const empty = await createFolder('Empty', parent.id, H1)
+
+    const res = await get(`/folders/${parent.id}`, H1)
+    const body = (await res.json()) as FolderView
+    expect(findEntry(body, empty.id).itemCount).toBe(0)
+  })
+
+  it('itemCount is 2 for a folder with exactly 2 direct subfolders and 0 files', async () => {
+    const parent = await createFolder('Parent', null, H1)
+    const target = await createFolder('Target', parent.id, H1)
+    await createFolder('Sub1', target.id, H1)
+    await createFolder('Sub2', target.id, H1)
+
+    const res = await get(`/folders/${parent.id}`, H1)
+    const body = (await res.json()) as FolderView
+    expect(findEntry(body, target.id).itemCount).toBe(2)
+  })
+
+  it('itemCount is 3 for a folder with 0 subfolders and 3 direct files', async () => {
+    const parent = await createFolder('Parent', null, H1)
+    const target = await createFolder('Target', parent.id, H1)
+    await uploadFile(H1, { name: 'a.txt', folderId: target.id })
+    await uploadFile(H1, { name: 'b.txt', folderId: target.id })
+    await uploadFile(H1, { name: 'c.txt', folderId: target.id })
+
+    const res = await get(`/folders/${parent.id}`, H1)
+    const body = (await res.json()) as FolderView
+    expect(findEntry(body, target.id).itemCount).toBe(3)
+  })
+
+  it('itemCount is the sum of direct subfolders and direct files', async () => {
+    const parent = await createFolder('Parent', null, H1)
+    const target = await createFolder('Target', parent.id, H1)
+    await createFolder('Sub1', target.id, H1)
+    await createFolder('Sub2', target.id, H1)
+    await uploadFile(H1, { name: 'a.txt', folderId: target.id })
+
+    const res = await get(`/folders/${parent.id}`, H1)
+    const body = (await res.json()) as FolderView
+    expect(findEntry(body, target.id).itemCount).toBe(3)
+  })
+
+  it('itemCount does not include grandchildren (nested two levels deep)', async () => {
+    const parent = await createFolder('Parent', null, H1)
+    const target = await createFolder('Target', parent.id, H1)
+    const sub = await createFolder('Sub', target.id, H1)
+    await createFolder('GrandchildFolder', sub.id, H1)
+    await uploadFile(H1, { name: 'deep.txt', folderId: sub.id })
+
+    const res = await get(`/folders/${parent.id}`, H1)
+    const body = (await res.json()) as FolderView
+    // Target has exactly one direct child (Sub) - the grandchild folder and
+    // grandchild file living inside Sub must not be counted here.
+    expect(findEntry(body, target.id).itemCount).toBe(1)
+  })
+
+  it('itemCount appears correctly for top-level folders via GET /folders/root', async () => {
+    const top = await createFolder('Top', null, H1)
+    await createFolder('Sub1', top.id, H1)
+    await uploadFile(H1, { name: 'a.txt', folderId: top.id })
+    await uploadFile(H1, { name: 'b.txt', folderId: top.id })
+
+    const res = await get('/folders/root', H1)
+    const body = (await res.json()) as FolderView
+    expect(findEntry(body, top.id).itemCount).toBe(3)
+  })
+
+  it('itemCount is scoped per-owner between two otherwise-identical folder trees', async () => {
+    const mineParent = await createFolder('Shared', null, H1)
+    const mineTarget = await createFolder('Target', mineParent.id, H1)
+    await createFolder('Sub1', mineTarget.id, H1)
+
+    const theirsParent = await createFolder('Shared', null, H2)
+    const theirsTarget = await createFolder('Target', theirsParent.id, H2)
+    await createFolder('Sub1', theirsTarget.id, H2)
+    await createFolder('Sub2', theirsTarget.id, H2)
+    await uploadFile(H2, { name: 'x.txt', folderId: theirsTarget.id })
+
+    const mineRes = await get(`/folders/${mineParent.id}`, H1)
+    const mineBody = (await mineRes.json()) as FolderView
+    expect(findEntry(mineBody, mineTarget.id).itemCount).toBe(1)
+
+    const theirsRes = await get(`/folders/${theirsParent.id}`, H2)
+    const theirsBody = (await theirsRes.json()) as FolderView
+    expect(findEntry(theirsBody, theirsTarget.id).itemCount).toBe(3)
+  })
+
+  it('itemCount decrements after deleting one of a folder direct subfolders', async () => {
+    const parent = await createFolder('Parent', null, H1)
+    const target = await createFolder('Target', parent.id, H1)
+    const sub1 = await createFolder('Sub1', target.id, H1)
+    await createFolder('Sub2', target.id, H1)
+
+    let res = await get(`/folders/${parent.id}`, H1)
+    let body = (await res.json()) as FolderView
+    expect(findEntry(body, target.id).itemCount).toBe(2)
+
+    const delRes = await del(`/folders/${sub1.id}`, H1)
+    expect(delRes.status).toBe(200)
+
+    res = await get(`/folders/${parent.id}`, H1)
+    body = (await res.json()) as FolderView
+    expect(findEntry(body, target.id).itemCount).toBe(1)
+  })
+
+  it('itemCount decrements after deleting one of a folder direct files', async () => {
+    const parent = await createFolder('Parent', null, H1)
+    const target = await createFolder('Target', parent.id, H1)
+    const uploadRes = await uploadFile(H1, { name: 'a.txt', folderId: target.id })
+    expect(uploadRes.status).toBe(201)
+    const file = (await uploadRes.json()) as { id: string }
+    await uploadFile(H1, { name: 'b.txt', folderId: target.id })
+
+    let res = await get(`/folders/${parent.id}`, H1)
+    let body = (await res.json()) as FolderView
+    expect(findEntry(body, target.id).itemCount).toBe(2)
+
+    const delRes = await del(`/files/${file.id}`, H1)
+    expect(delRes.status).toBe(200)
+
+    res = await get(`/folders/${parent.id}`, H1)
+    body = (await res.json()) as FolderView
+    expect(findEntry(body, target.id).itemCount).toBe(1)
   })
 })
 
