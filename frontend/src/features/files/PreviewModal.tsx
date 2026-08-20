@@ -105,7 +105,16 @@ export function PreviewModal({ file, onClose, onDownload }: {
           <iframe
             src={objectUrl}
             title={file.name}
-            style={{ width: '100%', height: '70vh', border: 'none', borderRadius: 'var(--radius-md)' }}
+            // A fixed height (unlike the image/text/markdown previews
+            // below, which cap themselves with maxHeight and scroll
+            // internally) - an iframe collapses to a tiny intrinsic
+            // height without one. 70vh alone doesn't account for the
+            // Modal's own header/footer/padding on top of it, which on
+            // shorter viewports pushes the dialog's total content past
+            // its own maxHeight: 90vh and forces the *Modal* itself
+            // (not the PDF) to grow a thin outer scrollbar. min() keeps
+            // this within budget regardless of viewport height.
+            style={{ width: '100%', height: 'min(70vh, calc(90vh - 200px))', border: 'none', borderRadius: 'var(--radius-md)' }}
           />
         )}
         {textContent !== null && kind === 'markdown' && (

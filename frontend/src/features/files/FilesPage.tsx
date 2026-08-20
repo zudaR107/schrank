@@ -22,6 +22,7 @@ import { loadPdfjs, PdfThumbnail } from './PdfThumbnail'
 
 type RenameTarget = { kind: 'folder' | 'file'; id: string; name: string }
 type MoveTarget = { kind: 'folder' | 'file'; id: string; currentParentId: string | null }
+type BreadcrumbItem = { id: string; name: string }
 
 // Every breadcrumb segment (the Home icon button and each text button)
 // gets this exact height, regardless of whether its content is an icon
@@ -93,6 +94,26 @@ export function FilesPage() {
     queryKey: ['folder-contents', folderId],
     queryFn: () => getFolderContents(folderId),
   })
+
+  // The breadcrumb trail shown on screen, which is allowed to diverge
+  // from data.ancestors (the server's literal path to the *current*
+  // folder): stepping back to an ancestor already on screen shouldn't
+  // truncate the row down to just that ancestor - it should keep the
+  // rest of the trail visible and only move which segment reads as
+  // "current", so a user who went several folders deep can jump back
+  // several at once instead of one click at a time. The trail only
+  // actually rebuilds when navigation lands somewhere that ISN'T a
+  // continuation of what's already shown - i.e. a different branch.
+  const [trail, setTrail] = useState<BreadcrumbItem[]>([])
+  useEffect(() => {
+    if (!data) return
+    const realPath = data.folder ? [...data.ancestors, data.folder] : []
+    setTrail((prev) => {
+      const isBackOrForwardWithinTrail = realPath.length <= prev.length
+        && realPath.every((item, i) => item.id === prev[i]?.id)
+      return isBackOrForwardWithinTrail ? prev : realPath
+    })
+  }, [data])
 
   function invalidate() {
     void queryClient.invalidateQueries({ queryKey: ['folder-contents'] })
@@ -217,40 +238,44 @@ export function FilesPage() {
               style={{
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
                 width: BREADCRUMB_ITEM_SIZE, height: BREADCRUMB_ITEM_SIZE, padding: 0, borderRadius: 8,
-                background: !data?.folder ? 'var(--accent-muted)' : undefined,
-                color: !data?.folder ? 'var(--accent)' : undefined,
+                background: !folderId ? 'var(--accent-muted)' : undefined,
+                color: !folderId ? 'var(--accent)' : undefined,
               }}
             >
               <Home size={18} />
             </button>
-            {(data?.ancestors ?? []).map((ancestor) => (
-              <span key={ancestor.id} style={{ display: 'flex', alignItems: 'center' }}>
-                <ChevronRight size={14} color="var(--text-muted)" style={{ flexShrink: 0 }} />
-                <button
-                  type="button"
-                  className="btn-ghost"
-                  onClick={() => goTo(ancestor.id)}
-                  style={{ height: BREADCRUMB_ITEM_SIZE, padding: '0 0.75rem', borderRadius: 8, whiteSpace: 'nowrap' }}
-                >
-                  {ancestor.name}
-                </button>
-              </span>
-            ))}
-            {data?.folder && (
-              <span style={{ display: 'flex', alignItems: 'center' }}>
-                <ChevronRight size={14} color="var(--text-muted)" style={{ flexShrink: 0 }} />
-                {/* The same accent-muted "you are here" treatment Home
-                 * gets at root - whichever segment is the current
-                 * location should look that way, not just root. */}
-                <strong style={{
-                  display: 'flex', alignItems: 'center', height: BREADCRUMB_ITEM_SIZE, padding: '0 0.75rem',
-                  borderRadius: 8, background: 'var(--accent-muted)', color: 'var(--accent)',
-                  fontSize: '0.875rem', fontWeight: 700, whiteSpace: 'nowrap',
-                }}>
-                  {data.folder.name}
-                </strong>
-              </span>
-            )}
+            {trail.map((item) => {
+              const isCurrent = item.id === folderId
+              return (
+                <span key={item.id} style={{ display: 'flex', alignItems: 'center' }}>
+                  <ChevronRight size={14} color="var(--text-muted)" style={{ flexShrink: 0 }} />
+                  {/* The same accent-muted "you are here" treatment Home
+                   * gets at root - whichever segment is the current
+                   * location should look that way, not just root. Trail
+                   * items past the current one (still shown so a user
+                   * who stepped back can jump forward again) stay
+                   * regular clickable buttons, same as ones before it. */}
+                  {isCurrent ? (
+                    <strong style={{
+                      display: 'flex', alignItems: 'center', height: BREADCRUMB_ITEM_SIZE, padding: '0 0.75rem',
+                      borderRadius: 8, background: 'var(--accent-muted)', color: 'var(--accent)',
+                      fontSize: '0.875rem', fontWeight: 700, whiteSpace: 'nowrap',
+                    }}>
+                      {item.name}
+                    </strong>
+                  ) : (
+                    <button
+                      type="button"
+                      className="btn-ghost"
+                      onClick={() => goTo(item.id)}
+                      style={{ height: BREADCRUMB_ITEM_SIZE, padding: '0 0.75rem', borderRadius: 8, whiteSpace: 'nowrap' }}
+                    >
+                      {item.name}
+                    </button>
+                  )}
+                </span>
+              )
+            })}
           </nav>
         </div>
 

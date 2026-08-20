@@ -136,6 +136,36 @@ describe('FilesPage — listing', () => {
     expect(mockNavigate).toHaveBeenCalledWith({ to: '/files', search: { folder: 'folder-1' } })
   })
 
+  it('keeps the rest of the trail visible when navigating back to an ancestor, only moving which segment is "current"', async () => {
+    const work = { id: 'work', name: 'Work', parentId: null, createdAt: '2026-08-19T10:00:00.000Z' }
+    const photos = { id: 'photos', name: 'Photos', parentId: 'work', createdAt: '2026-08-19T10:00:00.000Z' }
+    const vacation = { id: 'vacation', name: 'Vacation', parentId: 'photos', createdAt: '2026-08-19T10:00:00.000Z' }
+    vi.mocked(getFolderContents).mockImplementation((id) => {
+      if (id === 'vacation') return Promise.resolve({ folder: vacation, ancestors: [work, photos], folders: [], files: [] })
+      if (id === 'work') return Promise.resolve({ folder: work, ancestors: [], folders: [], files: [] })
+      return Promise.resolve(emptyRoot)
+    })
+    mockUseSearch.mockReturnValue({ folder: 'vacation' })
+    const { rerender } = render(<FilesPage />, { wrapper: createWrapper() })
+
+    expect(await screen.findByText('Vacation')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Work' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Photos' })).toBeInTheDocument()
+
+    // Same effect a breadcrumb click or a browser-back navigation to an
+    // ancestor already on screen has: the `folder` search param changes.
+    mockUseSearch.mockReturnValue({ folder: 'work' })
+    rerender(<FilesPage />)
+
+    // Photos/Vacation stay visible (and still clickable) instead of
+    // being truncated away, so a multi-level jump is still one click.
+    expect(await screen.findByText('Photos')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Photos' })).toBeInTheDocument()
+    expect(screen.getByText('Vacation')).toBeInTheDocument()
+    // Work itself is now "current" - no longer a clickable button.
+    expect(screen.queryByRole('button', { name: 'Work' })).not.toBeInTheDocument()
+  })
+
   it('navigates into a folder when its row is clicked', async () => {
     const user = userEvent.setup()
     vi.mocked(getFolderContents).mockResolvedValue(rootContents)
