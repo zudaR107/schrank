@@ -16,8 +16,15 @@ const THUMBNAIL_TARGET_WIDTH = 300
 // rendering (most folders have none) - dynamically imported rather than
 // bundled into the app's main chunk, and the worker script wired up
 // exactly once regardless of how many PdfThumbnail instances mount.
+// Exported so FilesPage can kick this off the moment a folder listing
+// arrives and turns out to contain a PDF, rather than only once the
+// first PdfThumbnail itself mounts and starts waiting on it - the
+// network fetch (the library chunk plus its worker script) is the
+// actual source of the "lag on first PDF" the eager-loading pattern
+// otherwise still has, and starting it earlier is the only way to
+// actually hide that latency rather than just move where it's spent.
 let pdfjsReady: Promise<typeof import('pdfjs-dist')> | undefined
-function loadPdfjs() {
+export function loadPdfjs() {
   pdfjsReady ??= Promise.all([
     import('pdfjs-dist'),
     import('pdfjs-dist/build/pdf.worker.min.mjs?url'),
