@@ -18,6 +18,7 @@ import {
 import { NameModal } from './NameModal'
 import { FolderPickerModal } from './FolderPickerModal'
 import { isPreviewable, previewKind, PreviewModal } from './PreviewModal'
+import { PdfThumbnail } from './PdfThumbnail'
 
 type RenameTarget = { kind: 'folder' | 'file'; id: string; name: string }
 type MoveTarget = { kind: 'folder' | 'file'; id: string; currentParentId: string | null }
@@ -227,9 +228,13 @@ export function FilesPage() {
             {data?.folder && (
               <span style={{ display: 'flex', alignItems: 'center' }}>
                 <ChevronRight size={14} color="var(--text-muted)" style={{ flexShrink: 0 }} />
+                {/* The same accent-muted "you are here" treatment Home
+                 * gets at root - whichever segment is the current
+                 * location should look that way, not just root. */}
                 <strong style={{
                   display: 'flex', alignItems: 'center', height: BREADCRUMB_ITEM_SIZE, padding: '0 0.75rem',
-                  color: 'var(--text-primary)', fontSize: '0.875rem', fontWeight: 700, whiteSpace: 'nowrap',
+                  borderRadius: 8, background: 'var(--accent-muted)', color: 'var(--accent)',
+                  fontSize: '0.875rem', fontWeight: 700, whiteSpace: 'nowrap',
                 }}>
                   {data.folder.name}
                 </strong>
@@ -452,7 +457,11 @@ function FileThumbnail({ file }: { file: FileSummary }) {
   const [textContent, setTextContent] = useState<string | null>(null)
 
   useEffect(() => {
-    if (kind !== 'image' && kind !== 'pdf' && kind !== 'markdown' && kind !== 'text') return
+    // PDF renders itself via PdfThumbnail below, with its own fetch -
+    // an <iframe>/<embed> can't be made to show just the document
+    // content at this size (see that component's own comment), so this
+    // blob-URL path is only for image thumbnails now.
+    if (kind !== 'image' && kind !== 'markdown' && kind !== 'text') return
     let cancelled = false
     let url: string | null = null
     fetchFileBlob(file.id)
@@ -475,27 +484,12 @@ function FileThumbnail({ file }: { file: FileSummary }) {
   if (kind === 'image' && objectUrl) {
     return <img src={objectUrl} alt={file.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
   }
-  if (kind === 'pdf' && objectUrl) {
-    // #toolbar=0&navpanes=0&scrollbar=0 - recognized by both Chrome's and
-    // Firefox's built-in (PDF.js-based) viewers to hide their own chrome
-    // (the toolbar, its search box, and the document-outline side panel)
-    // - without it, that chrome is what actually fills a thumbnail this
-    // small, not the document itself. pointerEvents: none - the tile's
-    // own onClick (open the full preview) must fire no matter where on
-    // the thumbnail the user clicks, not get captured by the embedded
-    // viewer underneath.
-    return (
-      <iframe
-        src={`${objectUrl}#toolbar=0&navpanes=0&scrollbar=0`}
-        title={file.name}
-        tabIndex={-1}
-        style={{ width: '100%', height: '100%', border: 'none', pointerEvents: 'none' }}
-      />
-    )
+  if (kind === 'pdf') {
+    return <PdfThumbnail fileId={file.id} name={file.name} />
   }
   if (kind === 'markdown' && textContent !== null) {
     return (
-      <div style={{ width: '100%', height: '100%', overflow: 'hidden', pointerEvents: 'none' }}>
+      <div style={{ width: '100%', height: '100%', overflow: 'hidden', pointerEvents: 'none', userSelect: 'none' }}>
         {/* A genuine miniature, not just small text: rendered at its
          * real proportions (so a top-level heading is still only
          * modestly bigger than body text, the way it reads in the
@@ -517,7 +511,8 @@ function FileThumbnail({ file }: { file: FileSummary }) {
   if (kind === 'text' && textContent !== null) {
     return (
       <pre style={{
-        width: '100%', height: '100%', margin: 0, padding: '0.5rem', textAlign: 'left', pointerEvents: 'none',
+        width: '100%', height: '100%', margin: 0, padding: '0.5rem', textAlign: 'left',
+        pointerEvents: 'none', userSelect: 'none',
         fontSize: '0.5rem', lineHeight: 1.35, color: 'var(--text-primary)', whiteSpace: 'pre-wrap', wordBreak: 'break-word',
       }}>
         {textContent}
