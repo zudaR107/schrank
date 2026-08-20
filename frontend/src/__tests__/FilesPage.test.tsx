@@ -205,18 +205,6 @@ describe('FilesPage — delete', () => {
 })
 
 describe('FilesPage — download', () => {
-  it('fetches the file content as a blob and triggers a browser download when the row is clicked', async () => {
-    const user = userEvent.setup()
-    vi.mocked(getFolderContents).mockResolvedValue(rootContents)
-    const blob = new Blob(['%PDF'], { type: 'application/pdf' })
-    vi.mocked(fetchFileBlob).mockResolvedValue(blob)
-    render(<FilesPage />, { wrapper: createWrapper() })
-
-    await user.click(await screen.findByText('report.pdf'))
-
-    await waitFor(() => expect(fetchFileBlob).toHaveBeenCalledWith('file-1'))
-  })
-
   it("does not trigger a folder's own click-to-open when clicking its action buttons", async () => {
     const user = userEvent.setup()
     vi.mocked(getFolderContents).mockResolvedValue(rootContents)
@@ -226,5 +214,68 @@ describe('FilesPage — download', () => {
     await user.click(screen.getByRole('button', { name: 'Переименовать «Photos»' }))
 
     expect(mockNavigate).not.toHaveBeenCalled()
+  })
+
+  it('downloads directly when the "Скачать" action button is clicked, even for a previewable file', async () => {
+    const user = userEvent.setup()
+    vi.mocked(getFolderContents).mockResolvedValue(rootContents)
+    const blob = new Blob(['%PDF'], { type: 'application/pdf' })
+    vi.mocked(fetchFileBlob).mockResolvedValue(blob)
+    render(<FilesPage />, { wrapper: createWrapper() })
+    await screen.findByText('report.pdf')
+
+    await user.click(screen.getByRole('button', { name: 'Скачать «report.pdf»' }))
+
+    await waitFor(() => expect(fetchFileBlob).toHaveBeenCalledWith('file-1'))
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+  })
+
+  it('downloads a non-previewable file directly, without opening a preview, when its row is clicked', async () => {
+    const user = userEvent.setup()
+    vi.mocked(getFolderContents).mockResolvedValue({
+      ...emptyRoot,
+      files: [{
+        id: 'file-2', name: 'archive.zip', folderId: null, mimeType: 'application/zip',
+        sizeBytes: 4096, createdAt: '2026-08-19T10:00:00.000Z', updatedAt: '2026-08-19T10:00:00.000Z',
+      }],
+    })
+    const blob = new Blob(['zip'], { type: 'application/zip' })
+    vi.mocked(fetchFileBlob).mockResolvedValue(blob)
+    render(<FilesPage />, { wrapper: createWrapper() })
+
+    await user.click(await screen.findByText('archive.zip'))
+
+    await waitFor(() => expect(fetchFileBlob).toHaveBeenCalledWith('file-2'))
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+  })
+})
+
+describe('FilesPage — preview', () => {
+  it('opens an in-browser preview instead of downloading when a previewable file is clicked', async () => {
+    const user = userEvent.setup()
+    vi.mocked(getFolderContents).mockResolvedValue(rootContents)
+    const blob = new Blob(['%PDF'], { type: 'application/pdf' })
+    vi.mocked(fetchFileBlob).mockResolvedValue(blob)
+    render(<FilesPage />, { wrapper: createWrapper() })
+
+    await user.click(await screen.findByText('report.pdf'))
+
+    await waitFor(() => expect(fetchFileBlob).toHaveBeenCalledWith('file-1'))
+    expect(await screen.findByRole('dialog', { name: 'report.pdf' })).toBeInTheDocument()
+  })
+
+  it('lets the user download from inside the preview via the modal\'s action button', async () => {
+    const user = userEvent.setup()
+    vi.mocked(getFolderContents).mockResolvedValue(rootContents)
+    const blob = new Blob(['%PDF'], { type: 'application/pdf' })
+    vi.mocked(fetchFileBlob).mockResolvedValue(blob)
+    render(<FilesPage />, { wrapper: createWrapper() })
+    await user.click(await screen.findByText('report.pdf'))
+    await screen.findByRole('dialog', { name: 'report.pdf' })
+    vi.mocked(fetchFileBlob).mockClear()
+
+    await user.click(screen.getByRole('button', { name: 'Скачать' }))
+
+    await waitFor(() => expect(fetchFileBlob).toHaveBeenCalledWith('file-1'))
   })
 })

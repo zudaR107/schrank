@@ -5,7 +5,7 @@ import {
   ChevronRight, Download, File as FileIcon, Folder, FolderInput,
   FolderPlus, Home, Pencil, Trash2, Upload,
 } from 'lucide-react'
-import { Button, EmptyState, Toast } from '@zudar107/schloss-ui'
+import { Button, downloadBlob, EmptyState, Toast } from '@zudar107/schloss-ui'
 import { HeroIllustration } from '../../components/HeroIllustration'
 import { useToast } from '../../hooks/useToast'
 import {
@@ -15,6 +15,7 @@ import {
 } from '../../lib/api'
 import { NameModal } from './NameModal'
 import { FolderPickerModal } from './FolderPickerModal'
+import { isPreviewable, PreviewModal } from './PreviewModal'
 
 type RenameTarget = { kind: 'folder' | 'file'; id: string; name: string }
 type MoveTarget = { kind: 'folder' | 'file'; id: string; currentParentId: string | null }
@@ -41,17 +42,6 @@ function errorMessage(error: unknown, fallback: string): string {
   return fallback
 }
 
-function triggerBrowserDownload(blob: Blob, filename: string) {
-  const url = URL.createObjectURL(blob)
-  const anchor = document.createElement('a')
-  anchor.href = url
-  anchor.download = filename
-  document.body.appendChild(anchor)
-  anchor.click()
-  anchor.remove()
-  URL.revokeObjectURL(url)
-}
-
 export function FilesPage() {
   const { folder: folderIdRaw } = useSearch({ strict: false }) as { folder?: string }
   const folderId = folderIdRaw ?? null
@@ -64,6 +54,7 @@ export function FilesPage() {
   const [renameTarget, setRenameTarget] = useState<RenameTarget | null>(null)
   const [moveTarget, setMoveTarget] = useState<MoveTarget | null>(null)
   const [downloadingId, setDownloadingId] = useState<string | null>(null)
+  const [previewFile, setPreviewFile] = useState<FileSummary | null>(null)
 
   const { data, isLoading, isError } = useQuery({
     queryKey: ['folder-contents', folderId],
@@ -152,11 +143,19 @@ export function FilesPage() {
     setDownloadingId(file.id)
     try {
       const blob = await fetchFileBlob(file.id)
-      triggerBrowserDownload(blob, file.name)
+      downloadBlob(blob, file.name)
     } catch {
       toast.showError('Не удалось скачать файл')
     } finally {
       setDownloadingId(null)
+    }
+  }
+
+  function handleOpen(file: FileSummary) {
+    if (isPreviewable(file.mimeType)) {
+      setPreviewFile(file)
+    } else {
+      void handleDownload(file)
     }
   }
 
@@ -235,6 +234,7 @@ export function FilesPage() {
               key={file.id}
               file={file}
               downloading={downloadingId === file.id}
+              onOpen={() => handleOpen(file)}
               onDownload={() => void handleDownload(file)}
               onRename={() => setRenameTarget({ kind: 'file', id: file.id, name: file.name })}
               onMove={() => setMoveTarget({ kind: 'file', id: file.id, currentParentId: folderId })}
@@ -280,6 +280,14 @@ export function FilesPage() {
           pending={moveMutation.isPending}
           error={moveMutation.error ? errorMessage(moveMutation.error, 'Не удалось переместить') : null}
           excludeFolderId={moveTarget.kind === 'folder' ? moveTarget.id : undefined}
+        />
+      )}
+
+      {previewFile && (
+        <PreviewModal
+          file={previewFile}
+          onClose={() => setPreviewFile(null)}
+          onDownload={() => void handleDownload(previewFile)}
         />
       )}
 
@@ -362,12 +370,12 @@ function FolderRow({ folder, onOpen, onRename, onMove, onDelete }: {
   )
 }
 
-function FileRow({ file, downloading, onDownload, onRename, onMove, onDelete }: {
-  file: FileSummary; downloading: boolean; onDownload: () => void; onRename: () => void; onMove: () => void; onDelete: () => void
+function FileRow({ file, downloading, onOpen, onDownload, onRename, onMove, onDelete }: {
+  file: FileSummary; downloading: boolean; onOpen: () => void; onDownload: () => void; onRename: () => void; onMove: () => void; onDelete: () => void
 }) {
   return (
     <RowShell
-      onClick={onDownload}
+      onClick={onOpen}
       icon={<FileIcon size={20} color="var(--text-muted)" style={{ flexShrink: 0 }} />}
       name={file.name}
       meta={formatBytes(file.sizeBytes)}
