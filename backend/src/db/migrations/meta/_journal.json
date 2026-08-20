@@ -15,6 +15,13 @@
       "when": 1787146405767,
       "tag": "0001_large_kronos",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1787215983398,
+      "tag": "0002_bored_thunderbolt_ross",
+      "breakpoints": true
     }
   ]
 }

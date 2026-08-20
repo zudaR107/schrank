@@ -15,6 +15,8 @@ import { exportsRouter } from './features/exports/router.js'
 import { requireAuth, requireAdmin } from './middleware/auth.js'
 import { openApiDocument } from './openapi.js'
 import { MAX_FILE_BYTES } from './lib/quota.js'
+import { syncInboxRouter } from './sync/inbox.js'
+import { startZettelSyncOutbox } from './sync/outbox.js'
 
 // Resolved relative to this file so it works both in dev (src/index.ts,
 // migrations at src/db/migrations) and in the compiled build
@@ -57,18 +59,22 @@ app.route('/folders', foldersRouter)
 app.route('/files', filesRouter)
 app.route('/usage', usageRouter)
 app.route('/exports', exportsRouter)
+app.route('/internal/v1', syncInboxRouter)
 
 const PORT = Number(process.env['PORT'] ?? 3005)
 const server = serve({ fetch: app.fetch, port: PORT }, () => {
   console.log(`[Schrank API] Running on http://localhost:${PORT}`)
 })
 
+const zettelSyncOutboxRuntime = startZettelSyncOutbox()
+
 let shutdownPromise: Promise<void> | undefined
 function shutdown(): Promise<void> {
   if (shutdownPromise) return shutdownPromise
-  shutdownPromise = new Promise<void>((resolve, reject) => {
+  const httpStopped = new Promise<void>((resolve, reject) => {
     server.close((error) => error ? reject(error) : resolve())
   })
+  shutdownPromise = Promise.all([httpStopped, zettelSyncOutboxRuntime.stop()]).then(() => undefined)
   return shutdownPromise
 }
 process.once('SIGINT', () => shutdown())

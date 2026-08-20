@@ -8,6 +8,7 @@ import { exportsRouter } from '../../features/exports/router.js'
 import { requireAuth, requireAdmin } from '../../middleware/auth.js'
 import { openApiDocument } from '../../openapi.js'
 import { MAX_FILE_BYTES } from '../../lib/quota.js'
+import { syncInboxRouter } from '../../sync/inbox.js'
 
 /**
  * Build a minimal Hono app wired up with the real routers plus the
@@ -41,5 +42,6 @@ export function createTestApp() {
   app.route('/files', filesRouter)
   app.route('/usage', usageRouter)
   app.route('/exports', exportsRouter)
+  app.route('/internal/v1', syncInboxRouter)
   return app
 }

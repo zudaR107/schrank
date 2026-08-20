@@ -4,12 +4,16 @@ import { z } from 'zod'
 import { eq, and } from 'drizzle-orm'
 import { createId } from '@paralleldrive/cuid2'
 import { db } from '../../db/index.js'
-import { files } from '../../db/schema.js'
+import { files, zettelMirrors } from '../../db/schema.js'
 import { requireAuth } from '../../middleware/auth.js'
 import { getOwnedFolder, nameTaken } from '../../lib/folders.js'
 import { fileJson } from '../../lib/serialize.js'
 import { storagePathFor, isSafeStoragePath, writeFileBytes, readFileStream, deleteFileBytes } from '../../lib/storage.js'
 import { MAX_FILE_BYTES, MAX_BYTES_PER_USER, usedBytes } from '../../lib/quota.js'
+import { isZettelFolder } from '../../lib/wellKnownFolder.js'
+import { enqueueZettelSyncEvent } from '../../sync/enqueue.js'
+
+const MIRRORABLE_EXTENSION = /\.(md|markdown)$/i
 
 const router = new Hono()
 router.use('*', requireAuth)
@@ -45,11 +49,20 @@ router.post('/', async (c) => {
   if (usedBytes(user.id) + upload.size > MAX_BYTES_PER_USER) {
     return c.json({ error: 'Storage quota exceeded' }, 413)
   }
+
+  // Read the upload body BEFORE the uniqueness check below, not after -
+  // `arrayBuffer()` is the only await between the check and the insert,
+  // and used to sit *after* the check, leaving a window where two
+  // concurrent uploads of the same name could both pass it before either
+  // inserted (Node can't preempt a synchronous stretch of code, so once
+  // nothing here awaits between the check and the write, the race closes
+  // on its own - db.transaction() below is for write atomicity, not this).
+  const bytes = new Uint8Array(await upload.arrayBuffer())
+
   if (nameTaken(db, user.id, folderId, name)) {
     return c.json({ error: 'A folder or file with that name already exists here' }, 409)
   }
 
-  const bytes = new Uint8Array(await upload.arrayBuffer())
   const id = createId()
   const storagePath = storagePathFor(user.id, id)
   const now = new Date()
@@ -59,15 +72,24 @@ router.post('/', async (c) => {
     sizeBytes: upload.size, storagePath, createdAt: now, updatedAt: now,
   }
 
-  db.insert(files).values(record).run()
-  try {
+  db.transaction((tx) => {
+    tx.insert(files).values(record).run()
     writeFileBytes(storagePath, bytes)
-  } catch (error) {
-    // The DB row and the bytes must agree - a row naming bytes that were
-    // never actually written would 500 on every future GET .../content.
-    db.delete(files).where(eq(files.id, id)).run()
-    throw error
-  }
+
+    // Only .md/.markdown uploads landing directly in the owner's
+    // well-known "zettel" folder become notes - anything else uploaded
+    // there is left alone, matching Schrank staying a fully generic file
+    // store with no folder-specific rules baked into the upload path
+    // itself (see sync/inbox.ts for the other half of this integration).
+    if (isZettelFolder(tx, user.id, folderId) && MIRRORABLE_EXTENSION.test(name)) {
+      const noteId = createId()
+      tx.insert(zettelMirrors).values({ fileId: id, noteId, ownerUserId: user.id, createdAt: now }).run()
+      enqueueZettelSyncEvent(tx, 'schrank.file.zettel_created.v1', user.id, {
+        noteId, ownerUserId: user.id, ownerEmail: user.email, ownerName: user.name,
+        title: name.replace(MIRRORABLE_EXTENSION, ''), content: new TextDecoder().decode(bytes),
+      })
+    }
+  })
 
   return c.json(fileJson(record), 201)
 })
@@ -119,6 +141,19 @@ router.patch('/:id', zValidator('json', updateSchema), (c) => {
 
     const updatedAt = new Date()
     tx.update(files).set({ name: nextName, folderId: nextFolderId, updatedAt }).where(eq(files.id, id)).run()
+
+    // Title-only sync back to Zettel - never content, since Schrank has
+    // no file-editing feature at all. A move (folderId change alone)
+    // doesn't rename the note, so it's excluded from this check.
+    if (nextName !== existing.name) {
+      const mirror = tx.select().from(zettelMirrors).where(eq(zettelMirrors.fileId, id)).get()
+      if (mirror) {
+        enqueueZettelSyncEvent(tx, 'schrank.file.zettel_renamed.v1', user.id, {
+          noteId: mirror.noteId, ownerUserId: user.id, title: nextName.replace(MIRRORABLE_EXTENSION, ''),
+        })
+      }
+    }
+
     return fileJson({ ...existing, name: nextName, folderId: nextFolderId, updatedAt })
   })
 
@@ -131,10 +166,22 @@ router.patch('/:id', zValidator('json', updateSchema), (c) => {
 router.delete('/:id', (c) => {
   const user = c.get('user')
   const { id } = c.req.param()
-  const existing = getOwnedFile(user.id, id)
-  if (!existing) return c.json({ error: 'Not found' }, 404)
 
-  db.delete(files).where(eq(files.id, id)).run()
+  const existing = db.transaction((tx) => {
+    const file = tx.select().from(files).where(and(eq(files.id, id), eq(files.ownerUserId, user.id))).get()
+    if (!file) return null
+
+    const mirror = tx.select().from(zettelMirrors).where(eq(zettelMirrors.fileId, id)).get()
+    tx.delete(files).where(eq(files.id, id)).run() // cascades the zettelMirrors row too
+    if (mirror) {
+      enqueueZettelSyncEvent(tx, 'schrank.file.zettel_deleted.v1', user.id, {
+        noteId: mirror.noteId, ownerUserId: user.id,
+      })
+    }
+    return file
+  })
+
+  if (!existing) return c.json({ error: 'Not found' }, 404)
   deleteFileBytes(existing.storagePath)
   return c.json({ ok: true })
 })
