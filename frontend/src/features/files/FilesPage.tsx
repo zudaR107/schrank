@@ -20,6 +20,14 @@ import { isPreviewable, previewKind, PreviewModal } from './PreviewModal'
 type RenameTarget = { kind: 'folder' | 'file'; id: string; name: string }
 type MoveTarget = { kind: 'folder' | 'file'; id: string; currentParentId: string | null }
 
+// Every breadcrumb segment (the Home icon button and each text button)
+// gets this exact height, regardless of whether its content is an icon
+// or a text line - without it, the icon-only Home button and the
+// text buttons compute slightly different natural heights, which reads
+// as the whole row "jumping" vertically the moment a second segment
+// appears next to it.
+const BREADCRUMB_ITEM_SIZE = 40
+
 function formatBytes(bytes: number): string {
   if (bytes < 1024) return `${bytes} Б`
   const units = ['КБ', 'МБ', 'ГБ', 'ТБ']
@@ -181,22 +189,48 @@ export function FilesPage() {
           <h1 style={{ margin: 0, fontSize: '1.25rem', fontWeight: 700, letterSpacing: '-0.02em', color: 'var(--text-primary)' }}>
             Файлы
           </h1>
-          <nav aria-label="Breadcrumb" style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', flexWrap: 'wrap', marginTop: '0.5rem', fontSize: '0.9375rem' }}>
-            <button type="button" className="btn-ghost" style={{ padding: '0.5rem 0.625rem', borderRadius: 8 }} onClick={() => goTo(null)}>
-              <Home size={17} />
+          <nav aria-label="Breadcrumb" style={{
+            display: 'flex', alignItems: 'center', gap: 2, flexWrap: 'wrap', marginTop: '0.625rem',
+            background: 'var(--bg-surface)', border: '1px solid var(--border)', borderRadius: 10,
+            padding: 3, width: 'fit-content', maxWidth: '100%',
+          }}>
+            <button
+              type="button"
+              className="btn-ghost"
+              aria-label="На главную"
+              title="На главную"
+              onClick={() => goTo(null)}
+              style={{
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                width: BREADCRUMB_ITEM_SIZE, height: BREADCRUMB_ITEM_SIZE, padding: 0, borderRadius: 8,
+                background: !data?.folder ? 'var(--accent-muted)' : undefined,
+                color: !data?.folder ? 'var(--accent)' : undefined,
+              }}
+            >
+              <Home size={18} />
             </button>
             {(data?.ancestors ?? []).map((ancestor) => (
-              <span key={ancestor.id} style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
-                <ChevronRight size={15} color="var(--text-muted)" />
-                <button type="button" className="btn-ghost" style={{ padding: '0.5rem 0.75rem', borderRadius: 8 }} onClick={() => goTo(ancestor.id)}>
+              <span key={ancestor.id} style={{ display: 'flex', alignItems: 'center' }}>
+                <ChevronRight size={14} color="var(--text-muted)" style={{ flexShrink: 0 }} />
+                <button
+                  type="button"
+                  className="btn-ghost"
+                  onClick={() => goTo(ancestor.id)}
+                  style={{ height: BREADCRUMB_ITEM_SIZE, padding: '0 0.75rem', borderRadius: 8, whiteSpace: 'nowrap' }}
+                >
                   {ancestor.name}
                 </button>
               </span>
             ))}
             {data?.folder && (
-              <span style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
-                <ChevronRight size={15} color="var(--text-muted)" />
-                <strong style={{ padding: '0.5rem 0.75rem', color: 'var(--text-primary)' }}>{data.folder.name}</strong>
+              <span style={{ display: 'flex', alignItems: 'center' }}>
+                <ChevronRight size={14} color="var(--text-muted)" style={{ flexShrink: 0 }} />
+                <strong style={{
+                  display: 'flex', alignItems: 'center', height: BREADCRUMB_ITEM_SIZE, padding: '0 0.75rem',
+                  color: 'var(--text-primary)', fontSize: '0.875rem', fontWeight: 700, whiteSpace: 'nowrap',
+                }}>
+                  {data.folder.name}
+                </strong>
               </span>
             )}
           </nav>
@@ -357,7 +391,13 @@ function Tile({ onOpen, thumbnail, name, meta, actions }: {
     >
       <div
         style={{
-          aspectRatio: '1 / 1', background: 'var(--bg-base)', display: 'flex', alignItems: 'center',
+          // A tint distinct from both the page background and the
+          // card's own surface, so a folder/generic-file icon reads as
+          // sitting in a deliberate "preview slot" - not as an
+          // unstyled gap that happens to match the page behind it. An
+          // actual loaded image fills this completely, so the tint
+          // only ever shows through for icons/loading state.
+          aspectRatio: '1 / 1', background: 'var(--accent-muted)', display: 'flex', alignItems: 'center',
           justifyContent: 'center', overflow: 'hidden',
         }}
       >
@@ -398,11 +438,11 @@ function FolderTile({ folder, onOpen, onRename, onMove, onDelete }: {
 }
 
 function FileThumbnail({ file }: { file: FileSummary }) {
+  const kind = previewKind(file)
   const [imageUrl, setImageUrl] = useState<string | null>(null)
-  const isImage = file.mimeType.startsWith('image/')
 
   useEffect(() => {
-    if (!isImage) return
+    if (kind !== 'image') return
     let cancelled = false
     let url: string | null = null
     fetchFileBlob(file.id)
@@ -416,13 +456,13 @@ function FileThumbnail({ file }: { file: FileSummary }) {
       cancelled = true
       if (url) URL.revokeObjectURL(url)
     }
-  }, [file.id, isImage])
+  }, [file.id, kind])
 
-  if (isImage && imageUrl) {
+  if (kind === 'image' && imageUrl) {
     return <img src={imageUrl} alt={file.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
   }
-  if (previewKind(file) === 'text') return <FileText size={40} color="var(--text-muted)" strokeWidth={1.5} />
-  return <FileIcon size={40} color="var(--text-muted)" strokeWidth={1.5} />
+  if (kind === 'text') return <FileText size={40} color="var(--accent)" strokeWidth={1.5} />
+  return <FileIcon size={40} color="var(--accent)" strokeWidth={1.5} />
 }
 
 function FileTile({ file, downloading, onOpen, onDownload, onRename, onMove, onDelete }: {
