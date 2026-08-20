@@ -139,6 +139,109 @@ describe('FilesPage — create folder', () => {
 
     await waitFor(() => expect(createFolder).toHaveBeenCalledWith({ name: 'Work', parentId: null }))
   })
+
+  it('resets the name field to empty when reopened, instead of carrying over the last-created name', async () => {
+    const user = userEvent.setup()
+    vi.mocked(getFolderContents).mockResolvedValue(emptyRoot)
+    vi.mocked(createFolder).mockResolvedValue({ id: 'new-folder', name: 'Work', parentId: null, createdAt: '2026-08-19T12:00:00.000Z' })
+    render(<FilesPage />, { wrapper: createWrapper() })
+    await screen.findByText('Здесь пока пусто')
+
+    await user.click(screen.getByRole('button', { name: /новая папка/i }))
+    await user.type(screen.getByLabelText('Название'), 'Work')
+    await user.click(screen.getByRole('button', { name: 'Создать' }))
+    await waitFor(() => expect(createFolder).toHaveBeenCalled())
+
+    await user.click(screen.getByRole('button', { name: /новая папка/i }))
+
+    expect(screen.getByLabelText('Название')).toHaveValue('')
+  })
+})
+
+describe('FilesPage — folder item counts', () => {
+  it('shows the item count on a folder tile', async () => {
+    vi.mocked(getFolderContents).mockResolvedValue({
+      ...emptyRoot,
+      folders: [{ id: 'folder-1', name: 'Photos', parentId: null, createdAt: '2026-08-19T10:00:00.000Z', itemCount: 5 }],
+    })
+    render(<FilesPage />, { wrapper: createWrapper() })
+
+    expect(await screen.findByText('Photos')).toBeInTheDocument()
+    expect(screen.getByText('5 элементов')).toBeInTheDocument()
+  })
+
+  it('shows "Пусто" for a folder with no children', async () => {
+    vi.mocked(getFolderContents).mockResolvedValue({
+      ...emptyRoot,
+      folders: [{ id: 'folder-1', name: 'Empty', parentId: null, createdAt: '2026-08-19T10:00:00.000Z', itemCount: 0 }],
+    })
+    render(<FilesPage />, { wrapper: createWrapper() })
+
+    expect(await screen.findByText('Empty')).toBeInTheDocument()
+    expect(screen.getByText('Пусто')).toBeInTheDocument()
+  })
+
+  it('uses correct Russian plural forms for 1, 2, and 5 items', async () => {
+    vi.mocked(getFolderContents).mockResolvedValue({
+      ...emptyRoot,
+      folders: [
+        { id: 'f1', name: 'One', parentId: null, createdAt: '2026-08-19T10:00:00.000Z', itemCount: 1 },
+        { id: 'f2', name: 'Two', parentId: null, createdAt: '2026-08-19T10:00:00.000Z', itemCount: 2 },
+      ],
+    })
+    render(<FilesPage />, { wrapper: createWrapper() })
+
+    expect(await screen.findByText('1 элемент')).toBeInTheDocument()
+    expect(screen.getByText('2 элемента')).toBeInTheDocument()
+  })
+})
+
+describe('FilesPage — image thumbnails', () => {
+  it('eagerly fetches and shows an inline thumbnail for an image file, without a click', async () => {
+    vi.mocked(getFolderContents).mockResolvedValue({
+      ...emptyRoot,
+      files: [{
+        id: 'file-3', name: 'photo.jpg', folderId: null, mimeType: 'image/jpeg',
+        sizeBytes: 1024, createdAt: '2026-08-19T10:00:00.000Z', updatedAt: '2026-08-19T10:00:00.000Z',
+      }],
+    })
+    const blob = new Blob(['jpg'], { type: 'image/jpeg' })
+    vi.mocked(fetchFileBlob).mockResolvedValue(blob)
+    render(<FilesPage />, { wrapper: createWrapper() })
+
+    await waitFor(() => expect(fetchFileBlob).toHaveBeenCalledWith('file-3'))
+    expect(await screen.findByRole('img', { name: 'photo.jpg' })).toHaveAttribute('src', 'blob:mock')
+  })
+
+  it('does not eagerly fetch a thumbnail for a non-image file', async () => {
+    vi.mocked(getFolderContents).mockResolvedValue(rootContents)
+    render(<FilesPage />, { wrapper: createWrapper() })
+
+    await screen.findByText('report.pdf')
+
+    expect(fetchFileBlob).not.toHaveBeenCalled()
+  })
+})
+
+describe('FilesPage — text preview', () => {
+  it('opens a text preview for a markdown file with no browser-reported MIME type', async () => {
+    const user = userEvent.setup()
+    vi.mocked(getFolderContents).mockResolvedValue({
+      ...emptyRoot,
+      files: [{
+        id: 'file-4', name: 'README.md', folderId: null, mimeType: '',
+        sizeBytes: 40, createdAt: '2026-08-19T10:00:00.000Z', updatedAt: '2026-08-19T10:00:00.000Z',
+      }],
+    })
+    const blob = new Blob(['# Hello'], { type: 'text/markdown' })
+    vi.mocked(fetchFileBlob).mockResolvedValue(blob)
+    render(<FilesPage />, { wrapper: createWrapper() })
+
+    await user.click(await screen.findByText('README.md'))
+
+    expect(await screen.findByRole('dialog', { name: 'README.md' })).toBeInTheDocument()
+    expect(await screen.findByText('# Hello')).toBeInTheDocument()
+  })
 })
 
 describe('FilesPage — upload', () => {

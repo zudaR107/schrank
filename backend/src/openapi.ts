@@ -44,10 +44,13 @@ const fileResponseSchema = z.object({
   id: z.string(), name: z.string(), folderId: z.string().nullable(), mimeType: z.string(),
   sizeBytes: z.number().int().nonnegative(), createdAt: z.iso.datetime(), updatedAt: z.iso.datetime(),
 })
+const folderWithCountResponseSchema = folderResponseSchema.extend({
+  itemCount: z.number().int().nonnegative(),
+})
 const folderContentsResponseSchema = z.object({
   folder: folderResponseSchema.nullable(),
   ancestors: z.array(folderResponseSchema),
-  folders: z.array(folderResponseSchema),
+  folders: z.array(folderWithCountResponseSchema),
   files: z.array(fileResponseSchema),
 })
 const folderCreateSchema = z.object({ name: z.string().min(1).max(200), parentId: z.string().nullable() })

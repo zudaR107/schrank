@@ -1,8 +1,8 @@
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useNavigate, useSearch } from '@tanstack/react-router'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
-  ChevronRight, Download, File as FileIcon, Folder, FolderInput,
+  ChevronRight, Download, File as FileIcon, FileText, Folder, FolderInput,
   FolderPlus, Home, Pencil, Trash2, Upload,
 } from 'lucide-react'
 import { Button, downloadBlob, EmptyState, Toast } from '@zudar107/schloss-ui'
@@ -15,7 +15,7 @@ import {
 } from '../../lib/api'
 import { NameModal } from './NameModal'
 import { FolderPickerModal } from './FolderPickerModal'
-import { isPreviewable, PreviewModal } from './PreviewModal'
+import { isPreviewable, previewKind, PreviewModal } from './PreviewModal'
 
 type RenameTarget = { kind: 'folder' | 'file'; id: string; name: string }
 type MoveTarget = { kind: 'folder' | 'file'; id: string; currentParentId: string | null }
@@ -30,6 +30,16 @@ function formatBytes(bytes: number): string {
     unitIndex += 1
   }
   return `${value.toFixed(value < 10 ? 1 : 0)} ${units[unitIndex]}`
+}
+
+function pluralizeItems(n: number): string {
+  if (n === 0) return 'Пусто'
+  const mod10 = n % 10
+  const mod100 = n % 100
+  if (mod100 >= 11 && mod100 <= 14) return `${n} элементов`
+  if (mod10 === 1) return `${n} элемент`
+  if (mod10 >= 2 && mod10 <= 4) return `${n} элемента`
+  return `${n} элементов`
 }
 
 function errorMessage(error: unknown, fallback: string): string {
@@ -51,6 +61,7 @@ export function FilesPage() {
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   const [createFolderOpen, setCreateFolderOpen] = useState(false)
+  const [createFolderKey, setCreateFolderKey] = useState(0)
   const [renameTarget, setRenameTarget] = useState<RenameTarget | null>(null)
   const [moveTarget, setMoveTarget] = useState<MoveTarget | null>(null)
   const [downloadingId, setDownloadingId] = useState<string | null>(null)
@@ -152,7 +163,7 @@ export function FilesPage() {
   }
 
   function handleOpen(file: FileSummary) {
-    if (isPreviewable(file.mimeType)) {
+    if (isPreviewable(file)) {
       setPreviewFile(file)
     } else {
       void handleDownload(file)
@@ -170,29 +181,29 @@ export function FilesPage() {
           <h1 style={{ margin: 0, fontSize: '1.25rem', fontWeight: 700, letterSpacing: '-0.02em', color: 'var(--text-primary)' }}>
             Файлы
           </h1>
-          <nav aria-label="Breadcrumb" style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', flexWrap: 'wrap', marginTop: '0.375rem', fontSize: '0.8125rem' }}>
-            <button type="button" className="btn-ghost" style={{ padding: '0.25rem 0.5rem' }} onClick={() => goTo(null)}>
-              <Home size={14} />
+          <nav aria-label="Breadcrumb" style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', flexWrap: 'wrap', marginTop: '0.5rem', fontSize: '0.9375rem' }}>
+            <button type="button" className="btn-ghost" style={{ padding: '0.5rem 0.625rem', borderRadius: 8 }} onClick={() => goTo(null)}>
+              <Home size={17} />
             </button>
             {(data?.ancestors ?? []).map((ancestor) => (
               <span key={ancestor.id} style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
-                <ChevronRight size={13} color="var(--text-muted)" />
-                <button type="button" className="btn-ghost" style={{ padding: '0.25rem 0.5rem' }} onClick={() => goTo(ancestor.id)}>
+                <ChevronRight size={15} color="var(--text-muted)" />
+                <button type="button" className="btn-ghost" style={{ padding: '0.5rem 0.75rem', borderRadius: 8 }} onClick={() => goTo(ancestor.id)}>
                   {ancestor.name}
                 </button>
               </span>
             ))}
             {data?.folder && (
               <span style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
-                <ChevronRight size={13} color="var(--text-muted)" />
-                <strong style={{ padding: '0.25rem 0.5rem', color: 'var(--text-primary)' }}>{data.folder.name}</strong>
+                <ChevronRight size={15} color="var(--text-muted)" />
+                <strong style={{ padding: '0.5rem 0.75rem', color: 'var(--text-primary)' }}>{data.folder.name}</strong>
               </span>
             )}
           </nav>
         </div>
 
         <div style={{ display: 'flex', gap: '0.5rem' }}>
-          <Button variant="secondary" onClick={() => setCreateFolderOpen(true)}>
+          <Button variant="secondary" onClick={() => { setCreateFolderKey((k) => k + 1); setCreateFolderOpen(true) }}>
             <FolderPlus size={16} />Новая папка
           </Button>
           <Button variant="primary" disabled={uploadMutation.isPending} onClick={() => fileInputRef.current?.click()}>
@@ -218,9 +229,9 @@ export function FilesPage() {
       )}
 
       {!isLoading && !isError && !isEmpty && (
-        <div style={{ border: '1px solid var(--border)', borderRadius: 12, overflow: 'hidden', background: 'var(--bg-surface)' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(150px, 1fr))', gap: '1rem' }}>
           {folders.map((folder) => (
-            <FolderRow
+            <FolderTile
               key={folder.id}
               folder={folder}
               onOpen={() => goTo(folder.id)}
@@ -230,7 +241,7 @@ export function FilesPage() {
             />
           ))}
           {files.map((file) => (
-            <FileRow
+            <FileTile
               key={file.id}
               file={file}
               downloading={downloadingId === file.id}
@@ -245,6 +256,7 @@ export function FilesPage() {
       )}
 
       <NameModal
+        key={createFolderKey}
         open={createFolderOpen}
         title="Новая папка"
         icon={<FolderPlus size={20} />}
@@ -311,21 +323,20 @@ function EmptyFolderState({ onUpload }: { onUpload: () => void }) {
   )
 }
 
-function ItemActions({ children }: { children: React.ReactNode }) {
-  return <div className="file-row-actions" style={{ display: 'flex', gap: '0.35rem', flexWrap: 'wrap' }}>{children}</div>
-}
-
-function ActionButton({ onClick, danger, children, label }: { onClick: () => void; danger?: boolean; children: React.ReactNode; label: string }) {
+function IconActionButton({ onClick, danger, disabled, label, children }: {
+  onClick: () => void; danger?: boolean; disabled?: boolean; label: string; children: React.ReactNode
+}) {
   return (
     <button
       type="button"
       onClick={(e) => { e.stopPropagation(); onClick() }}
       aria-label={label}
       title={label}
+      disabled={disabled}
       style={{
-        display: 'inline-flex', alignItems: 'center', gap: '0.3rem', border: 0, background: 'transparent',
-        color: danger ? 'var(--danger)' : 'var(--accent)', cursor: 'pointer', padding: '0.35rem 0.5rem',
-        borderRadius: 7, fontSize: '0.78rem', fontWeight: 650,
+        display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 28, height: 28,
+        border: 0, background: 'transparent', color: danger ? 'var(--danger)' : 'var(--text-secondary)',
+        cursor: disabled ? 'default' : 'pointer', opacity: disabled ? 0.5 : 1, borderRadius: 7, flexShrink: 0,
       }}
     >
       {children}
@@ -333,61 +344,104 @@ function ActionButton({ onClick, danger, children, label }: { onClick: () => voi
   )
 }
 
-function RowShell({ onClick, icon, name, meta, children }: {
-  onClick?: () => void; icon: React.ReactNode; name: string; meta?: string; children: React.ReactNode
+function Tile({ onOpen, thumbnail, name, meta, actions }: {
+  onOpen?: () => void; thumbnail: React.ReactNode; name: string; meta: string; actions: React.ReactNode
 }) {
   return (
     <div
-      onClick={onClick}
+      onClick={onOpen}
       style={{
-        display: 'flex', alignItems: 'center', gap: '0.75rem', padding: '0.75rem 1rem',
-        borderBottom: '1px solid var(--border)', cursor: onClick ? 'pointer' : undefined,
+        display: 'flex', flexDirection: 'column', border: '1px solid var(--border)', borderRadius: 12,
+        background: 'var(--bg-surface)', overflow: 'hidden', cursor: onOpen ? 'pointer' : undefined,
       }}
     >
-      {icon}
-      <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ fontSize: '0.875rem', color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+      <div
+        style={{
+          aspectRatio: '1 / 1', background: 'var(--bg-base)', display: 'flex', alignItems: 'center',
+          justifyContent: 'center', overflow: 'hidden',
+        }}
+      >
+        {thumbnail}
+      </div>
+      <div style={{ padding: '0.625rem 0.75rem' }}>
+        <div title={name} style={{
+          fontSize: '0.8125rem', fontWeight: 600, color: 'var(--text-primary)',
+          overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+        }}>
           {name}
         </div>
-        {meta && <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{meta}</div>}
+        <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginTop: 2 }}>{meta}</div>
+        <div style={{ display: 'flex', gap: '0.125rem', marginTop: '0.375rem' }}>{actions}</div>
       </div>
-      {children}
     </div>
   )
 }
 
-function FolderRow({ folder, onOpen, onRename, onMove, onDelete }: {
+function FolderTile({ folder, onOpen, onRename, onMove, onDelete }: {
   folder: FolderSummary; onOpen: () => void; onRename: () => void; onMove: () => void; onDelete: () => void
 }) {
   return (
-    <RowShell onClick={onOpen} icon={<Folder size={20} color="var(--accent)" style={{ flexShrink: 0 }} />} name={folder.name}>
-      <ItemActions>
-        <ActionButton onClick={onRename} label={`Переименовать «${folder.name}»`}><Pencil size={14} />Переименовать</ActionButton>
-        <ActionButton onClick={onMove} label={`Переместить «${folder.name}»`}><FolderInput size={14} />Переместить</ActionButton>
-        <ActionButton onClick={onDelete} danger label={`Удалить «${folder.name}»`}><Trash2 size={14} />Удалить</ActionButton>
-      </ItemActions>
-    </RowShell>
+    <Tile
+      onOpen={onOpen}
+      thumbnail={<Folder size={40} color="var(--accent)" strokeWidth={1.5} />}
+      name={folder.name}
+      meta={pluralizeItems(folder.itemCount ?? 0)}
+      actions={(
+        <>
+          <IconActionButton onClick={onRename} label={`Переименовать «${folder.name}»`}><Pencil size={15} /></IconActionButton>
+          <IconActionButton onClick={onMove} label={`Переместить «${folder.name}»`}><FolderInput size={15} /></IconActionButton>
+          <IconActionButton onClick={onDelete} danger label={`Удалить «${folder.name}»`}><Trash2 size={15} /></IconActionButton>
+        </>
+      )}
+    />
   )
 }
 
-function FileRow({ file, downloading, onOpen, onDownload, onRename, onMove, onDelete }: {
+function FileThumbnail({ file }: { file: FileSummary }) {
+  const [imageUrl, setImageUrl] = useState<string | null>(null)
+  const isImage = file.mimeType.startsWith('image/')
+
+  useEffect(() => {
+    if (!isImage) return
+    let cancelled = false
+    let url: string | null = null
+    fetchFileBlob(file.id)
+      .then((blob) => {
+        if (cancelled) return
+        url = URL.createObjectURL(blob)
+        setImageUrl(url)
+      })
+      .catch(() => { /* falls back to the generic file icon below */ })
+    return () => {
+      cancelled = true
+      if (url) URL.revokeObjectURL(url)
+    }
+  }, [file.id, isImage])
+
+  if (isImage && imageUrl) {
+    return <img src={imageUrl} alt={file.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+  }
+  if (previewKind(file) === 'text') return <FileText size={40} color="var(--text-muted)" strokeWidth={1.5} />
+  return <FileIcon size={40} color="var(--text-muted)" strokeWidth={1.5} />
+}
+
+function FileTile({ file, downloading, onOpen, onDownload, onRename, onMove, onDelete }: {
   file: FileSummary; downloading: boolean; onOpen: () => void; onDownload: () => void; onRename: () => void; onMove: () => void; onDelete: () => void
 }) {
   return (
-    <RowShell
-      onClick={onOpen}
-      icon={<FileIcon size={20} color="var(--text-muted)" style={{ flexShrink: 0 }} />}
+    <Tile
+      onOpen={onOpen}
+      thumbnail={<FileThumbnail file={file} />}
       name={file.name}
       meta={formatBytes(file.sizeBytes)}
-    >
-      <ItemActions>
-        <ActionButton onClick={onDownload} label={`Скачать «${file.name}»`}>
-          <Download size={14} />{downloading ? 'Скачивание…' : 'Скачать'}
-        </ActionButton>
-        <ActionButton onClick={onRename} label={`Переименовать «${file.name}»`}><Pencil size={14} />Переименовать</ActionButton>
-        <ActionButton onClick={onMove} label={`Переместить «${file.name}»`}><FolderInput size={14} />Переместить</ActionButton>
-        <ActionButton onClick={onDelete} danger label={`Удалить «${file.name}»`}><Trash2 size={14} />Удалить</ActionButton>
-      </ItemActions>
-    </RowShell>
+      actions={(
+        <>
+          <IconActionButton onClick={onDownload} disabled={downloading} label={`Скачать «${file.name}»`}><Download size={15} /></IconActionButton>
+          <IconActionButton onClick={onRename} label={`Переименовать «${file.name}»`}><Pencil size={15} /></IconActionButton>
+          <IconActionButton onClick={onMove} label={`Переместить «${file.name}»`}><FolderInput size={15} /></IconActionButton>
+          <IconActionButton onClick={onDelete} danger label={`Удалить «${file.name}»`}><Trash2 size={15} /></IconActionButton>
+        </>
+      )}
+    />
   )
 }

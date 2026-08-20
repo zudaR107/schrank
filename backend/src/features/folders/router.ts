@@ -6,7 +6,7 @@ import { createId } from '@paralleldrive/cuid2'
 import { db } from '../../db/index.js'
 import { folders, files } from '../../db/schema.js'
 import { requireAuth } from '../../middleware/auth.js'
-import { getOwnedFolder, ancestorsOf, isSelfOrAncestor, nameTaken } from '../../lib/folders.js'
+import { getOwnedFolder, ancestorsOf, isSelfOrAncestor, itemCountOf, nameTaken } from '../../lib/folders.js'
 import { folderJson, fileJson } from '../../lib/serialize.js'
 import { deleteFileBytes } from '../../lib/storage.js'
 
@@ -28,7 +28,10 @@ function contents(ownerUserId: string, folderId: string | null) {
   const fileParentCondition = folderId === null ? isNull(files.folderId) : eq(files.folderId, folderId)
   const childFolders = db.select().from(folders).where(and(eq(folders.ownerUserId, ownerUserId), parentCondition)).all()
   const childFiles = db.select().from(files).where(and(eq(files.ownerUserId, ownerUserId), fileParentCondition)).all()
-  return { folders: childFolders.map(folderJson), files: childFiles.map(fileJson) }
+  return {
+    folders: childFolders.map((f) => ({ ...folderJson(f), itemCount: itemCountOf(db, ownerUserId, f.id) })),
+    files: childFiles.map(fileJson),
+  }
 }
 
 router.get('/root', (c) => {

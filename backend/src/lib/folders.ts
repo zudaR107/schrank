@@ -1,4 +1,4 @@
-import { eq, and, isNull, ne } from 'drizzle-orm'
+import { eq, and, isNull, ne, sql } from 'drizzle-orm'
 import { db } from '../db/index.js'
 import { folders, files, type Folder } from '../db/schema.js'
 
@@ -60,4 +60,14 @@ export function nameTaken(
     .where(and(eq(files.ownerUserId, ownerUserId), fileParentCondition, eq(files.name, name)))
     .get()
   return fileMatch !== undefined
+}
+
+// Direct children only (subfolders + files) - a folder card's "N
+// объектов" badge, not a recursive tree size.
+export function itemCountOf(executor: Executor, ownerUserId: string, folderId: string): number {
+  const folderCount = executor.select({ count: sql<number>`count(*)` }).from(folders)
+    .where(and(eq(folders.ownerUserId, ownerUserId), eq(folders.parentId, folderId))).get()?.count ?? 0
+  const fileCount = executor.select({ count: sql<number>`count(*)` }).from(files)
+    .where(and(eq(files.ownerUserId, ownerUserId), eq(files.folderId, folderId))).get()?.count ?? 0
+  return folderCount + fileCount
 }
