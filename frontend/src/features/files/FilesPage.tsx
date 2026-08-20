@@ -3,7 +3,7 @@ import { useNavigate, useSearch } from '@tanstack/react-router'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   ChevronRight, Download, File as FileIcon, FileText, Folder, FolderInput,
-  FolderPlus, Home, Pencil, Trash2, Upload,
+  FolderPlus, Home, Pencil, RefreshCw, Trash2, Upload,
 } from 'lucide-react'
 import { Button, downloadBlob, EmptyState, Toast } from '@zudar107/schloss-ui'
 import ReactMarkdown from 'react-markdown'
@@ -89,7 +89,7 @@ export function FilesPage() {
   const [downloadingId, setDownloadingId] = useState<string | null>(null)
   const [previewFile, setPreviewFile] = useState<FileSummary | null>(null)
 
-  const { data, isLoading, isError } = useQuery({
+  const { data, isLoading, isError, refetch } = useQuery({
     queryKey: ['folder-contents', folderId],
     queryFn: () => getFolderContents(folderId),
   })
@@ -271,8 +271,16 @@ export function FilesPage() {
         </div>
       </div>
 
-      {isLoading && <div style={{ color: 'var(--text-muted)', fontSize: '0.875rem' }}>Загрузка…</div>}
-      {isError && <div role="alert" className="inline-error">Не удалось загрузить содержимое папки</div>}
+      {isLoading && (
+        <div className="empty-wrap">
+          <LoadingFolderState />
+        </div>
+      )}
+      {isError && (
+        <div className="empty-wrap" role="alert">
+          <ErrorFolderState onRetry={() => void refetch()} />
+        </div>
+      )}
 
       {isEmpty && (
         <div className="empty-wrap">
@@ -371,6 +379,39 @@ function EmptyFolderState({ onUpload }: { onUpload: () => void }) {
       actionLabel="Загрузить файл"
       actionIcon={<Upload size={16} />}
       onAction={onUpload}
+    />
+  )
+}
+
+// EmptyState itself requires an action, which a bare loading state has
+// none of - this mirrors its illustration+title markup directly so
+// loading still belongs to the same "mascot + centered text" visual
+// family as every other start/empty page instead of falling back to
+// unstyled inline text.
+function LoadingFolderState() {
+  return (
+    <div style={{ textAlign: 'center', padding: '4rem 2rem', maxWidth: 440, margin: '0 auto' }}>
+      <div style={{
+        display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+        padding: '1.5rem', borderRadius: 'var(--radius-lg)', background: 'var(--accent-muted)',
+        margin: '0 auto 1.25rem',
+      }}>
+        <HeroIllustration size={100} />
+      </div>
+      <h2 style={{ margin: 0, color: 'var(--text-primary)', fontSize: '1.125rem', fontWeight: 600 }}>Загрузка…</h2>
+    </div>
+  )
+}
+
+function ErrorFolderState({ onRetry }: { onRetry: () => void }) {
+  return (
+    <EmptyState
+      illustration={<HeroIllustration size={100} />}
+      title="Не удалось загрузить содержимое папки"
+      description="Проверьте соединение и попробуйте ещё раз."
+      actionLabel="Повторить"
+      actionIcon={<RefreshCw size={16} />}
+      onAction={onRetry}
     />
   )
 }
@@ -500,13 +541,7 @@ function FileThumbnail({ file }: { file: FileSummary }) {
   }
   if (kind === 'markdown' && textContent !== null) {
     return (
-      <div
-        className="thumbnail-preview-text"
-        style={{
-          width: '100%', height: '100%', overflow: 'hidden', pointerEvents: 'none',
-          userSelect: 'none', WebkitUserSelect: 'none',
-        }}
-      >
+      <div style={{ width: '100%', height: '100%', overflow: 'hidden', pointerEvents: 'none' }}>
         {/* A genuine miniature, not just small text: rendered at its
          * real proportions (so a top-level heading is still only
          * modestly bigger than body text, the way it reads in the
@@ -515,9 +550,11 @@ function FileThumbnail({ file }: { file: FileSummary }) {
          * regardless of how wide the grid actually makes this tile.
          * Shrinking the whole block instead of just setting a tiny
          * font-size is what makes many lines of body text visible
-         * instead of one oversized heading swallowing the frame. */}
+         * instead of one oversized heading swallowing the frame.
+         * markdown-preview-mini strips code/pre/th's background badge
+         * (see index.css) - illegible at this scale regardless. */}
         <div
-          className="markdown-preview"
+          className="markdown-preview markdown-preview-mini"
           style={{ width: '400%', transform: 'scale(0.25)', transformOrigin: 'top left', padding: '0.75rem', textAlign: 'left' }}
         >
           <ReactMarkdown remarkPlugins={[remarkGfm]}>{textContent}</ReactMarkdown>
@@ -527,9 +564,9 @@ function FileThumbnail({ file }: { file: FileSummary }) {
   }
   if (kind === 'text' && textContent !== null) {
     return (
-      <pre className="thumbnail-preview-text" style={{
+      <pre style={{
         width: '100%', height: '100%', margin: 0, padding: '0.5rem', textAlign: 'left',
-        pointerEvents: 'none', userSelect: 'none', WebkitUserSelect: 'none',
+        pointerEvents: 'none',
         fontSize: '0.5rem', lineHeight: 1.35, color: 'var(--text-primary)', whiteSpace: 'pre-wrap', wordBreak: 'break-word',
       }}>
         {textContent}
