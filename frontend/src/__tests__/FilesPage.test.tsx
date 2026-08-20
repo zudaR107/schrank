@@ -213,6 +213,22 @@ describe('FilesPage — image thumbnails', () => {
     expect(await screen.findByRole('img', { name: 'photo.jpg' })).toHaveAttribute('src', 'blob:mock')
   })
 
+  it('eagerly fetches a thumbnail for an image file the browser reported no MIME type for, via its extension', async () => {
+    vi.mocked(getFolderContents).mockResolvedValue({
+      ...emptyRoot,
+      files: [{
+        id: 'file-5', name: 'photo.webp', folderId: null, mimeType: '',
+        sizeBytes: 2048, createdAt: '2026-08-19T10:00:00.000Z', updatedAt: '2026-08-19T10:00:00.000Z',
+      }],
+    })
+    const blob = new Blob(['webp'], { type: 'image/webp' })
+    vi.mocked(fetchFileBlob).mockResolvedValue(blob)
+    render(<FilesPage />, { wrapper: createWrapper() })
+
+    await waitFor(() => expect(fetchFileBlob).toHaveBeenCalledWith('file-5'))
+    expect(await screen.findByRole('img', { name: 'photo.webp' })).toHaveAttribute('src', 'blob:mock')
+  })
+
   it('does not eagerly fetch a thumbnail for a non-image file', async () => {
     vi.mocked(getFolderContents).mockResolvedValue(rootContents)
     render(<FilesPage />, { wrapper: createWrapper() })

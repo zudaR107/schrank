@@ -26,6 +26,15 @@ describe('previewKind', () => {
     expect(previewKind({ name: 'README.md', mimeType: 'application/octet-stream' })).toBe('text')
   })
 
+  it('falls back to a common image extension when the browser reported no MIME type or a generic one', () => {
+    expect(previewKind({ name: 'photo.jpg', mimeType: '' })).toBe('image')
+    expect(previewKind({ name: 'photo.jpeg', mimeType: '' })).toBe('image')
+    expect(previewKind({ name: 'photo.png', mimeType: 'application/octet-stream' })).toBe('image')
+    expect(previewKind({ name: 'photo.webp', mimeType: '' })).toBe('image')
+    expect(previewKind({ name: 'photo.gif', mimeType: '' })).toBe('image')
+    expect(previewKind({ name: 'photo.svg', mimeType: '' })).toBe('image')
+  })
+
   it('is case-insensitive about the extension', () => {
     expect(previewKind({ name: 'README.MD', mimeType: '' })).toBe('text')
   })

@@ -8,15 +8,21 @@ export type PreviewKind = 'image' | 'pdf' | 'text' | null
 // extensions they have no registered handler for - .md being the
 // common case on every desktop OS - so upload falls back to
 // "application/octet-stream" (see the backend's upload route). Extension
-// sniffing is the only reliable signal left in that case.
+// sniffing is the only reliable signal left in that case. Images are
+// normally detected correctly by every browser, but the same fallback
+// is applied for them too, defensively, since a mis-detected image is a
+// much worse experience (silently falls back to a generic icon with no
+// visual preview at all) than a mis-detected text file.
 const TEXT_EXTENSIONS = /\.(md|markdown|txt)$/i
+const IMAGE_EXTENSIONS = /\.(jpe?g|png|gif|webp|bmp|svg|avif)$/i
 
 export function previewKind(file: { name: string; mimeType: string }): PreviewKind {
   if (file.mimeType.startsWith('image/')) return 'image'
   if (file.mimeType === 'application/pdf') return 'pdf'
   if (file.mimeType === 'text/markdown' || file.mimeType === 'text/plain') return 'text'
-  if ((file.mimeType === '' || file.mimeType === 'application/octet-stream') && TEXT_EXTENSIONS.test(file.name)) {
-    return 'text'
+  if (file.mimeType === '' || file.mimeType === 'application/octet-stream') {
+    if (IMAGE_EXTENSIONS.test(file.name)) return 'image'
+    if (TEXT_EXTENSIONS.test(file.name)) return 'text'
   }
   return null
 }
